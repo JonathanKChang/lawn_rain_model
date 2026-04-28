@@ -204,7 +204,6 @@ scenarios:
     start_hour: 8            # simulation start time (0–23)
     day_of_year: 172         # 172 = June 21 (summer solstice)
     latitude: 39.0           # degrees (e.g., 39.0 = mid-Atlantic US)
-    mow_threshold: 5.0       # wetness index below which mower runs
     initial_wetness: 0.0     # starting wetness (0–100)
     calibration:
       target_hours_min: 3
@@ -240,7 +239,6 @@ Use real weather data from a Home Assistant history export CSV:
 scenarios:
   - name: real_event_2026_04_24
     history_file: history.csv    # path relative to scenarios YAML
-    mow_threshold: 5.0
     calibration:
       target_hours: 12
       weight: 1.0
