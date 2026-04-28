@@ -53,7 +53,7 @@ def build_compare_table(
         row: list[str] = []
         for _, p in param_sets:
             rows = run_scenario(s, model, p)
-            h2m  = hours_to_mow(rows, s.mow_threshold)
+            h2m  = hours_to_mow(rows, p["mow_threshold"])
             marker = _hit_marker(h2m, s)
             cell = _mow_cell(h2m, s)
             if marker:
@@ -141,7 +141,6 @@ def cmd_simulate(args: argparse.Namespace) -> None:
                 temp=args.temp, rh=args.rh,
                 wind=args.wind, clouds=args.clouds,
             ),
-            mow_threshold=args.threshold,
             initial_wetness=args.initial,
             use_solar_model=not args.no_solar,
             start_hour=args.start_hour,
@@ -154,7 +153,7 @@ def cmd_simulate(args: argparse.Namespace) -> None:
         print(f"\n{'='*80}\n  {s.name.upper()}\n{'='*80}")
         if not args.summary_only:
             print_table(rows, s, params)
-        print_summary(rows, s)
+        print_summary(rows, s, params)
 
         if args.csv:
             csv_path = (Path(args.csv) if len(scenarios) == 1
@@ -199,7 +198,7 @@ def cmd_sweep(args: argparse.Namespace) -> None:
     params = _load_params(args.params_file, model)
     rain_vals = [float(x) for x in args.rain_inches.split(",")]
 
-    print(f"\nDrying sweep  threshold={args.threshold}  "
+    print(f"\nDrying sweep  threshold={params['mow_threshold']}  "
           f"[{args.temp}F  RH={args.rh}%  wind={args.wind}mph  clouds={args.clouds}%]")
     print(f"{'Rain':>8}  {'Peak':>6}  {'Mow@':>6}")
     print("-" * 28)
@@ -213,14 +212,13 @@ def cmd_sweep(args: argparse.Namespace) -> None:
                 temp=args.temp, rh=args.rh,
                 wind=args.wind, clouds=args.clouds,
             ),
-            mow_threshold=args.threshold,
             use_solar_model=not args.no_solar,
             start_hour=args.start_hour,
             day_of_year=args.day_of_year,
             latitude=args.lat,
         )
         rows = run_scenario(s, model, params)
-        h2m  = hours_to_mow(rows, args.threshold)
+        h2m  = hours_to_mow(rows, params["mow_threshold"])
         peak = max(r["wetness_out"] for r in rows)
         print(f"  {rain:>5.2f}\"  peak={peak:>5.1f}  "
               f"{str(h2m)+'h' if h2m is not None else '>'+str(args.hours)+'h'}")
@@ -269,7 +267,6 @@ def build_parser() -> argparse.ArgumentParser:
     sim.add_argument("--compare-md", metavar="FILE")
     sim.add_argument("--rain", nargs="*", metavar="H:IN")
     sim.add_argument("--hours",        type=int,   default=72)
-    sim.add_argument("--threshold",    type=float, default=5.0)
     sim.add_argument("--initial",      type=float, default=0.0)
     sim.add_argument("--temp",         type=float, default=75.0)
     sim.add_argument("--rh",           type=float, default=60.0)
@@ -287,7 +284,6 @@ def build_parser() -> argparse.ArgumentParser:
     sw.add_argument("-P", "--params-file")
     sw.add_argument("--rain-inches", default="0.1,0.25,0.5,0.75,1.0,1.5,2.0,2.5")
     sw.add_argument("--hours",       type=int,   default=96)
-    sw.add_argument("--threshold",   type=float, default=5.0)
     sw.add_argument("--temp",        type=float, default=75.0)
     sw.add_argument("--rh",          type=float, default=60.0)
     sw.add_argument("--wind",        type=float, default=5.0)
