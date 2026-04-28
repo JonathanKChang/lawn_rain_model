@@ -18,7 +18,6 @@ def _hot_dry_scenario() -> Scenario:
         start_hour=8,
         day_of_year=172,
         latitude=39.0,
-        mow_threshold=5.0,
     )
 
 
@@ -32,7 +31,6 @@ def _cool_overcast_scenario() -> Scenario:
         start_hour=8,
         day_of_year=172,
         latitude=39.0,
-        mow_threshold=5.0,
     )
 
 
@@ -77,8 +75,9 @@ def test_tod_wraps_correctly(model: SingleLayerModel) -> None:
 def test_can_mow_uses_threshold(model: SingleLayerModel) -> None:
     s = _hot_dry_scenario()
     rows = run_scenario(s, model, model.default_params)
+    threshold = model.default_params["mow_threshold"]
     for r in rows:
-        assert r["can_mow"] == (r["wetness_out"] <= s.mow_threshold)
+        assert r["can_mow"] == (r["wetness_out"] <= threshold)
 
 
 def test_required_row_keys(model: SingleLayerModel) -> None:
@@ -104,7 +103,6 @@ def test_hours_to_mow_none_when_never_clears(model: SingleLayerModel) -> None:
         rain_events=[RainEvent(hour=0, inches=2.5)],
         weather=WeatherConditions(temp=45, rh=95, wind=1, clouds=100),
         use_solar_model=False,
-        mow_threshold=5.0,
     )
     rows = run_scenario(s, model, model.default_params)
     assert hours_to_mow(rows, threshold=5.0) is None

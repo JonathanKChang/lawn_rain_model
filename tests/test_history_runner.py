@@ -44,7 +44,6 @@ def test_real_history_runner_completes() -> None:
         rain_events=[],
         weather=None,
         history_file=str(TEST_HISTORY_CSV),
-        mow_threshold=5.0,
     )
     steps = build_weather_steps(s, base_path=FIXTURES_DIR)
     rows = run_scenario(s, model, model.default_params, weather_steps=steps)
@@ -72,7 +71,6 @@ def test_history_scenario_from_yaml(tmp_path: Path) -> None:
         scenarios:
           - name: history_test
             history_file: {hist_csv}
-            mow_threshold: 5.0
             calibration:
               target_hours: 12.0
               weight: 1.0
@@ -111,7 +109,6 @@ def test_history_scenario_runs_end_to_end(tmp_path: Path) -> None:
         rain_events=[],
         weather=None,
         history_file=str(hist_csv),
-        mow_threshold=5.0,
     )
     steps = build_weather_steps(s, base_path=tmp_path)
     rows = run_scenario(s, model, model.default_params, weather_steps=steps)
@@ -186,7 +183,7 @@ def test_fixture_weather_scenario_runs() -> None:
     assert len(rows) == weather_scenario.duration_hours
     assert rows[0]["rain_inches"] > 0  # rain at hour 0
     # Find the mow time (first hour where wetness drops below threshold)
-    threshold = weather_scenario.mow_threshold or 5.0
+    threshold = model.default_params["mow_threshold"]
     mow_times = [
         r["hour"] for r in rows if r["wetness_out"] <= threshold
     ]
