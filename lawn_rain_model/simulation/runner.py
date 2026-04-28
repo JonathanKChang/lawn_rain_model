@@ -55,18 +55,23 @@ def run_scenario(
     model: LawnModel,
     params: dict[str, float],
     weather_steps: list[WeatherStep] | None = None,
+    stop_after_mow: bool = False,
 ) -> list[dict[str, Any]]:
     """
     Run a scenario for its full duration.
 
     weather_steps: pre-built list (from history resampler). If None, steps
                    are generated from scenario.weather + solar model.
+    stop_after_mow: if True, stop once the lawn first dries below the mow
+                    threshold after having been wet (wetness > threshold).
     """
     if weather_steps is None:
         weather_steps = build_weather_steps(scenario)
 
     state = model.initial_state(scenario.initial_wetness)
     rows: list[dict[str, Any]] = []
+    mow_threshold = params["mow_threshold"]
+    became_wet = False
 
     for ws in weather_steps:
         wetness_in  = model.surface_wetness(state)
@@ -81,17 +86,33 @@ def run_scenario(
             "wetness_in":  wetness_in,
             "wetness_out": wetness_out,
             "drying_rate": result["drying_rate"],
-            "can_mow":     wetness_out <= params["mow_threshold"],
+            "can_mow":     wetness_out <= mow_threshold,
             "diagnostics": result["diagnostics"],
         })
+
+        if stop_after_mow:
+            if wetness_out > mow_threshold:
+                became_wet = True
+            elif became_wet and wetness_out <= mow_threshold:
+                state = model.initial_state(wetness_out)
+                return rows
         state = model.initial_state(wetness_out)
 
     return rows
 
 
 def hours_to_mow(rows: list[dict[str, Any]], threshold: float) -> int | None:
-    """Return the first hour where wetness_out ≤ threshold, or None."""
+    """
+    Return the first hour where wetness_out ≤ threshold *after* the lawn
+    has been wet (wetness > threshold at any earlier point).
+
+    This skips the initial dry period so that CSVs starting with low
+    wetness don't report hour-0 mow when rain hasn't actually occurred yet.
+    """
+    became_wet = False
     for r in rows:
-        if r["wetness_out"] <= threshold:
+        if r["wetness_out"] > threshold:
+            became_wet = True
+        elif became_wet and r["wetness_out"] <= threshold:
             return int(r["hour"])
     return None
