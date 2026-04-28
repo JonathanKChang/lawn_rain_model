@@ -364,13 +364,16 @@ def print_optimizer_report(opt, calibration_scenarios):
         print(f"  {s.name:<35} {tstr:>10} {gstr:>6} {loss:>8.4f}  {status}{note}")
 
     print(f"\n  Total weighted loss: {opt['loss']:.6f}")
+    print_jinja2(p)
 
+    # {{#- Optimized params (loss={opt['loss']:.5f}) -#}}
+    
+def print_jinja2(p):
     # Jinja2 snippet
     print(f"\n{'='*72}")
     print("  JINJA2 CONSTANTS (drop into your template)")
     print("=" * 72)
     print(f"""
-{{#- Optimized params (loss={opt['loss']:.5f}) -#}}
 {{%- set _base_evap       = {p['base_evap']:.5f} %}}
 {{%- set _vpd_denom       = {p['vpd_norm_denom']:.5f} %}}
 {{%- set _e_sat_base      = {p['e_sat_base']:.6f} %}}
@@ -511,14 +514,127 @@ def print_summary(rows, scenario, p=None):
 
 
 # ---------------------------------------------------------------------------
+# Comparison table
+# ---------------------------------------------------------------------------
+
+def _mow_cell(h2m, scenario):
+    """Format a mow-time cell: hour number, or '>Nh' if never within window."""
+    if h2m is None:
+        return f">{scenario.duration_hours}h"
+    return f"{h2m}h"
+
+
+def _hit_marker(h2m, scenario):
+    """Return ✓, FAST, SLOW, or '' (no calibration target)."""
+    if scenario.calibration is None:
+        return ""
+    t = scenario.calibration
+    if h2m is None:
+        actual = scenario.duration_hours
+    else:
+        actual = h2m
+    if t.target_hours_min <= actual <= t.target_hours_max:
+        return "✓"
+    return "FAST" if actual < t.target_hours_min else "SLOW"
+
+
+def build_compare_table(scenarios, param_sets):
+    """
+    param_sets: list of (label, dict) pairs
+    Returns the markdown table as a string.
+    """
+    # --- header ---
+    target_col = "Target"
+    col_widths_data = []  # widths for each param-set column
+    labels = [label for label, _ in param_sets]
+
+    # Pre-compute all results so we can size columns
+    # results[scenario_idx][ps_idx] = (h2m, cell_str)
+    results = []
+    for s in scenarios:
+        row = []
+        for _, p in param_sets:
+            rows = run_scenario(s, p)
+            h2m  = hours_to_mow(rows, s.mow_threshold)
+            marker = _hit_marker(h2m, s)
+            cell = _mow_cell(h2m, s)
+            if marker:
+                cell = f"{cell} {marker}"
+            row.append(cell)
+        results.append(row)
+
+    # Target strings per scenario
+    target_strs = []
+    for s in scenarios:
+        if s.calibration:
+            t = s.calibration
+            target_strs.append(f"{t.target_hours_min:.0f}-{t.target_hours_max:.0f}h")
+        else:
+            target_strs.append("")
+
+    # Column widths
+    name_w   = max(len("Scenario"),   max(len(s.name)        for s in scenarios))
+    target_w = max(len(target_col),   max(len(t)             for t in target_strs))
+    ps_widths = [
+        max(len(labels[i]), max(len(results[si][i]) for si in range(len(scenarios))))
+        for i in range(len(param_sets))
+    ]
+
+    def row_str(name, target, cells):
+        parts = [f"| {name:<{name_w}} ", f"| {target:^{target_w}} "]
+        for cell, w in zip(cells, ps_widths):
+            parts.append(f"| {cell:^{w}} ")
+        return "".join(parts) + "|"
+
+    def sep_str():
+        parts = [f"|{'-'*(name_w+2)}", f"|{'-'*(target_w+2)}"]
+        for w in ps_widths:
+            parts.append(f"|{'-'*(w+2)}")
+        return "".join(parts) + "|"
+
+    lines = []
+    lines.append(row_str("Scenario", target_col, [f"{lb:^{w}}" for lb, w in zip(labels, ps_widths)]))
+    lines.append(sep_str())
+
+    # Separate calibration vs exploration
+    cal_rows   = [(i, s) for i, s in enumerate(scenarios) if s.calibration is not None]
+    explo_rows = [(i, s) for i, s in enumerate(scenarios) if s.calibration is None]
+
+    if cal_rows:
+        lines.append(row_str("**CALIBRATION**", "", [""] * len(param_sets)))
+        for i, s in cal_rows:
+            lines.append(row_str(s.name, target_strs[i], results[i]))
+
+    if explo_rows:
+        lines.append(row_str("**EXPLORATION**", "", [""] * len(param_sets)))
+        for i, s in explo_rows:
+            lines.append(row_str(s.name, target_strs[i], results[i]))
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # CLI commands
 # ---------------------------------------------------------------------------
 
 def cmd_simulate(args):
-    p = DEFAULT_PARAMS.copy()
-    if args.params_file:
-        override = yaml.safe_load(Path(args.params_file).read_text()).get("params", {})
-        p.update(override)
+    # Build param sets: one per -P file (in order given).
+    # When multiple files are supplied we still use the first one for the
+    # per-scenario detailed tables / CSV / Jinja2 output so the single-run
+    # behaviour is unchanged.
+    param_files = args.params_file or []
+    if param_files:
+        param_sets = []
+        for pf in param_files:
+            p = DEFAULT_PARAMS.copy()
+            override = yaml.safe_load(Path(pf).read_text()).get("params", {})
+            p.update(override)
+            label = Path(pf).stem
+            param_sets.append((label, p))
+        p = param_sets[0][1]   # primary param set for detail output
+    else:
+        p = DEFAULT_PARAMS.copy()
+        param_sets = []        # no comparison requested
 
     if args.scenario_file:
         scenarios = load_scenarios(args.scenario_file)
@@ -555,6 +671,33 @@ def cmd_simulate(args):
                 w.writerows(rows)
             print(f"  CSV -> {csv_path}")
 
+    print_jinja2(p)
+
+
+    if args.save_params:
+        out = {"params": {k: float(round(v, 6)) for k, v in p.items()}}
+        Path(args.save_params).write_text(yaml.dump(out, default_flow_style=False))
+        print(f"\n  Params saved -> {args.save_params}")
+
+    # --- comparison table (only when 2+ param sets given) ---
+    if len(param_sets) >= 2:
+        table = build_compare_table(scenarios, param_sets)
+        print(f"\n{'='*80}")
+        print("  PARAMETER SET COMPARISON")
+        print(f"{'='*80}\n")
+        print(table)
+        print()
+
+        if args.compare_md:
+            md_path = Path(args.compare_md)
+            header  = "# Parameter Set Comparison\n\n"
+            legend  = (
+                "> ✓ = within target range  "
+                "· FAST = below target min  "
+                "· SLOW = above target max\n\n"
+            )
+            md_path.write_text(header + legend + table + "\n")
+            print(f"  Comparison table -> {md_path}")
 
 def cmd_sweep(args):
     p = DEFAULT_PARAMS.copy()
@@ -626,7 +769,10 @@ def build_parser():
     sim = sub.add_parser("simulate")
     sim.add_argument("-f", "--scenario-file")
     sim.add_argument("-n", "--name")
-    sim.add_argument("-P", "--params-file")
+    sim.add_argument("-P", "--params-file", nargs="*", metavar="FILE",
+                        help="One or more param YAML files to load/compare")
+    sim.add_argument("--compare-md", metavar="FILE",
+                        help="Write comparison markdown table to this file")
     sim.add_argument("--rain", nargs="*", metavar="H:IN")
     sim.add_argument("--hours",        type=int,   default=72)
     sim.add_argument("--threshold",    type=float, default=5.0)
@@ -640,6 +786,7 @@ def build_parser():
     sim.add_argument("--lat",          type=float, default=39.0)
     sim.add_argument("--no-solar",     action="store_true")
     sim.add_argument("--summary-only", action="store_true")
+    sim.add_argument("--save-params", metavar="FILE")
     sim.add_argument("--csv")
 
     # sweep
