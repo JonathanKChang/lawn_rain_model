@@ -115,3 +115,144 @@ def test_wetness_monotone_no_rain(model: SingleLayerModel) -> None:
     # Skip hour 0 (rain lands); from hour 1 onward wetness should not increase
     for i in range(1, len(rows) - 1):
         assert rows[i + 1]["wetness_out"] <= rows[i]["wetness_out"] + 1e-9
+
+
+# ---------------------------------------------------------------------------
+# Bug-fix tests: first-mow-after-rain, stop_after_mow, NaN rain
+# ---------------------------------------------------------------------------
+
+
+def _dry_start_then_rain_scenario() -> Scenario:
+    """
+    Simulates a CSV that starts dry (wetness 0.4, below threshold) with
+    tiny rain, then delivers a big rain burst at hour 13 that pushes
+    wetness well above threshold, then the lawn dries back down.
+    """
+    # We build a scenario with weather-backed rain events that mimic
+    # the 2026-04-05 CSV pattern: dry start, big rain at hour 13.
+    return Scenario(
+        name="dry_then_wet",
+        duration_hours=100,
+        rain_events=[
+            RainEvent(hour=0, inches=0.01),   # tiny, wetness stays low
+            RainEvent(hour=13, inches=0.11),  # big rain → wetness > 5
+            RainEvent(hour=14, inches=0.21),
+            RainEvent(hour=15, inches=0.17),
+            RainEvent(hour=16, inches=0.06),
+        ],
+        weather=WeatherConditions(temp=70, rh=70, wind=5, clouds=40),
+        initial_wetness=0.4,
+        use_solar_model=False,
+    )
+
+
+def test_hours_to_mow_skips_initial_dry_period(model: SingleLayerModel) -> None:
+    """hours_to_mow must NOT return hour 0 when the lawn starts dry."""
+    s = _dry_start_then_rain_scenario()
+    rows = run_scenario(s, model, model.default_params)
+    threshold = model.default_params["mow_threshold"]
+
+    # Hour 0 is already below threshold → should NOT be the first mow
+    assert rows[0]["wetness_out"] <= threshold
+
+    h2m = hours_to_mow(rows, threshold)
+    assert h2m is not None
+    assert h2m > 0, (
+        f"hours_to_mow returned {h2m} but should skip the initial dry period"
+    )
+    # The lawn gets wet at hour 13 (wetness > 5), then dries back down
+    # somewhere after hour 20.  h2m should be after hour 13.
+    assert h2m > 13
+
+
+def test_hours_to_mow_returns_none_when_never_wet(model: SingleLayerModel) -> None:
+    """If wetness never exceeds threshold, hours_to_mow returns None."""
+    s = Scenario(
+        name="always_dry",
+        duration_hours=24,
+        rain_events=[RainEvent(hour=0, inches=0.01)],
+        weather=WeatherConditions(temp=85, rh=20, wind=10, clouds=5),
+        initial_wetness=0.1,
+        use_solar_model=True,
+    )
+    rows = run_scenario(s, model, model.default_params)
+    # Wetness never exceeds 5
+    assert all(r["wetness_out"] <= 5.0 for r in rows)
+    assert hours_to_mow(rows, 5.0) is None
+
+
+def test_stop_after_mow_truncates_rows(model: SingleLayerModel) -> None:
+    """stop_after_mow=True should stop at first post-rain mow."""
+    s = _dry_start_then_rain_scenario()
+    # Full run
+    full_rows = run_scenario(s, model, model.default_params)
+    # Truncated run
+    truncated_rows = run_scenario(
+        s, model, model.default_params, stop_after_mow=True,
+    )
+
+    # Truncated should be shorter
+    assert len(truncated_rows) < len(full_rows)
+
+    # Last row of truncated should be a can_mow row
+    assert truncated_rows[-1]["can_mow"]
+
+    # All rows in truncated should be <= last hour in truncated
+    max_hour = truncated_rows[-1]["hour"]
+    for r in truncated_rows:
+        assert r["hour"] <= max_hour
+
+    # The truncated result should NOT contain the big rain hours
+    # (hours 14-16) if the lawn dries before them — but in this scenario
+    # the lawn gets wet at hour 13 and dries back down after hour 20,
+    # so the truncated rows should include hours 0..mow_hour.
+    threshold = model.default_params["mow_threshold"]
+    # There should be at least one row where wetness > threshold (the wet period)
+    has_wet = any(r["wetness_out"] > threshold for r in truncated_rows)
+    assert has_wet, "Truncated rows should include the wet period before mow"
+
+
+def test_nan_rain_values_filled_in_resampler() -> None:
+    """Rain values beyond the last accumulation reading must not be NaN."""
+    from pathlib import Path
+    import textwrap
+    from lawn_rain_model.simulation.weather import resample_history, DEFAULT_SENSOR_MAP
+
+    csv_text = textwrap.dedent("""\
+        entity_id,state,last_changed
+        sensor.pirateweather_temperature_0h,75.0,2026-04-24T10:00:00.000Z
+        sensor.pirateweather_temperature_0h,74.0,2026-04-24T11:00:00.000Z
+        sensor.pirateweather_temperature_0h,73.0,2026-04-24T12:00:00.000Z
+        sensor.pirateweather_current_day_liquid_accumulation,0.0,2026-04-24T10:00:00.000Z
+        sensor.pirateweather_current_day_liquid_accumulation,0.3,2026-04-24T10:30:00.000Z
+        sensor.pirateweather_humidity_0h,60,2026-04-24T10:00:00.000Z
+        sensor.pirateweather_humidity_0h,61,2026-04-24T11:00:00.000Z
+        sensor.pirateweather_humidity_0h,62,2026-04-24T12:00:00.000Z
+        sensor.pirateweather_wind_speed,5.0,2026-04-24T10:00:00.000Z
+        sensor.pirateweather_cloud_coverage,30,2026-04-24T10:00:00.000Z
+        sensor.sun_elevation,50.0,2026-04-24T10:00:00.000Z
+        sensor.sun_elevation,40.0,2026-04-24T11:00:00.000Z
+        sensor.sun_elevation,30.0,2026-04-24T12:00:00.000Z
+    """)
+
+    import tempfile, os
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write(csv_text)
+        csv_path = f.name
+
+    try:
+        steps = resample_history(csv_path, DEFAULT_SENSOR_MAP)
+        # All rain values must be valid numbers (no NaN)
+        for s in steps:
+            assert s.rain_inches == s.rain_inches, (
+                f"Hour {s.hour} has NaN rain_inches"
+            )
+            assert s.rain_inches >= 0, (
+                f"Hour {s.hour} has negative rain_inches: {s.rain_inches}"
+            )
+        # Total rain must not be NaN
+        total = sum(st.rain_inches for st in steps)
+        assert total == total, "Total rain is NaN"
+        assert total > 0, "Expected some rain from the accumulation delta"
+    finally:
+        os.unlink(csv_path)

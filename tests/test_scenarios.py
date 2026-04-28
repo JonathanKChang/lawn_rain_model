@@ -110,7 +110,7 @@ def test_weather_conditions_loaded(yaml_file: Path) -> None:
 
 def test_existing_scenarios_yaml_loads() -> None:
     """The project's actual scenarios.yaml must load without error."""
-    scenarios = ScenarioLoader.load("scenarios.yaml")
+    scenarios = ScenarioLoader.load("scenarios/scenarios.yaml")
     assert len(scenarios) > 0
     names = [s.name for s in scenarios]
     assert "calib_hot_sunny" in names
