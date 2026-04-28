@@ -149,7 +149,8 @@ def cmd_simulate(args: argparse.Namespace) -> None:
         )]
 
     for s in scenarios:
-        rows = run_scenario(s, model, params)
+        stop_after_mow = s.history_file is not None
+        rows = run_scenario(s, model, params, stop_after_mow=stop_after_mow)
         print(f"\n{'='*80}\n  {s.name.upper()}\n{'='*80}")
         if not args.summary_only:
             print_table(rows, s, params)
