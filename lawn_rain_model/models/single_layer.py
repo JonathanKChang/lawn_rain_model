@@ -8,6 +8,7 @@ All rate constants assume a 1-hour update interval.
 from __future__ import annotations
 import math
 from lawn_rain_model.simulation.weather import WeatherStep
+from lawn_rain_model.simulation.solar import solar_intensity_taylor
 
 _DEFAULT_PARAMS: dict[str, float] = {
     "base_evap":       0.06,
@@ -16,7 +17,6 @@ _DEFAULT_PARAMS: dict[str, float] = {
     "vpd_min":         0.02,
     "sun_coeff":       0.18,
     "cloud_exp":       1.40,
-    "solar_exp":       0.70,
     "wind_coeff":      0.022,
     "wind_cap":        0.50,
     "stage_thresh":    18.0,
@@ -36,7 +36,6 @@ _PARAM_BOUNDS: dict[str, tuple[float, float]] = {
     "vpd_min":         (0.005, 0.05),
     "sun_coeff":       (0.05,  0.50),
     "cloud_exp":       (0.50,  2.50),
-    "solar_exp":       (0.30,  1.20),
     "wind_coeff":      (0.005, 0.06),
     "wind_cap":        (0.20,  1.00),
     "stage_thresh":    (8.0,   30.0),
@@ -89,12 +88,9 @@ class SingleLayerModel:
         vpd       = max(vpd_raw, p["vpd_min"])
         vpd_norm  = vpd / p["vpd_norm_denom"]
 
-        # Solar
+        # Solar — Taylor expansion of sin(elevation) handles wrap-around
         cloud_factor = ((100 - weather.clouds) / 100) ** p["cloud_exp"]
-        if weather.elevation > 0:
-            solar_intensity = (weather.elevation / 90) ** p["solar_exp"]
-        else:
-            solar_intensity = 0.0
+        solar_intensity = solar_intensity_taylor(weather.elevation)
         sun_factor = p["sun_coeff"] * cloud_factor * solar_intensity
 
         # Wind
