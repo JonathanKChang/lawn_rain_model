@@ -81,7 +81,7 @@ def run_scenario(
             "wetness_in":  wetness_in,
             "wetness_out": wetness_out,
             "drying_rate": result["drying_rate"],
-            "can_mow":     wetness_out <= scenario.mow_threshold,
+            "can_mow":     wetness_out <= params["mow_threshold"],
             "diagnostics": result["diagnostics"],
         })
         state = model.initial_state(wetness_out)

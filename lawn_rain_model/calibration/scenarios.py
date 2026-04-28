@@ -36,7 +36,6 @@ class Scenario:
     duration_hours:  int
     rain_events:     list[RainEvent]
     weather:         Optional[WeatherConditions]   # None when history_file is set
-    mow_threshold:   float                = 5.0
     initial_wetness: float                = 0.0
     use_solar_model: bool                 = True
     start_hour:      int                  = 6
@@ -96,7 +95,6 @@ class ScenarioLoader:
                 duration_hours=s.get("duration_hours", 96),
                 rain_events=rain_events,
                 weather=weather,
-                mow_threshold=s.get("mow_threshold", 5.0),
                 initial_wetness=s.get("initial_wetness", 0.0),
                 use_solar_model=s.get("use_solar_model", True),
                 start_hour=s.get("start_hour", 6),
