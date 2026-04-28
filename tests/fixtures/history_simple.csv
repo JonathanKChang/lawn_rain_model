@@ -1,0 +1,16 @@
+entity_id,state,last_changed
+sensor.pirateweather_temperature_0h,75.0,2026-04-24T10:00:00.000Z
+sensor.pirateweather_temperature_0h,76.0,2026-04-24T10:30:00.000Z
+sensor.pirateweather_temperature_0h,74.0,2026-04-24T11:30:00.000Z
+sensor.pirateweather_current_day_liquid_accumulation,0.0,2026-04-24T10:00:00.000Z
+sensor.pirateweather_current_day_liquid_accumulation,0.5,2026-04-24T10:45:00.000Z
+sensor.pirateweather_current_day_liquid_accumulation,0.8,2026-04-24T11:30:00.000Z
+sensor.pirateweather_humidity_0h,60,2026-04-24T10:00:00.000Z
+sensor.pirateweather_humidity_0h,62,2026-04-24T11:15:00.000Z
+sensor.pirateweather_wind_speed,5.0,2026-04-24T10:00:00.000Z
+sensor.pirateweather_wind_speed,6.0,2026-04-24T11:00:00.000Z
+sensor.pirateweather_cloud_coverage,30,2026-04-24T10:00:00.000Z
+sensor.sun_elevation,50.0,2026-04-24T10:00:00.000Z
+sensor.sun_elevation,45.0,2026-04-24T10:30:00.000Z
+sensor.sun_elevation,40.0,2026-04-24T11:00:00.000Z
+sensor.sun_elevation,35.0,2026-04-24T11:30:00.000Z
