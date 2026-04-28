@@ -26,6 +26,7 @@ _DEFAULT_PARAMS: dict[str, float] = {
     "rain_mult":       40.0,
     "visc_slope":      0.015,
     "visc_floor":      0.35,
+    "mow_threshold":   5.0,
 }
 
 _PARAM_BOUNDS: dict[str, tuple[float, float]] = {
@@ -45,6 +46,7 @@ _PARAM_BOUNDS: dict[str, tuple[float, float]] = {
     "rain_mult":       (20.0,  70.0),
     "visc_slope":      (0.005, 0.030),
     "visc_floor":      (0.20,  0.60),
+    "mow_threshold":   (1.0,  20.0),
 }
 
 
