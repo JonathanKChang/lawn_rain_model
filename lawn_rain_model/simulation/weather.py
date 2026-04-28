@@ -86,6 +86,9 @@ def resample_history(
         "rain":   rain_h,
     }).dropna(subset=["temp"])  # require at least temp data each hour
 
+    # Fill any remaining NaN in rain (e.g. past last accumulation sensor reading)
+    combined["rain"] = combined["rain"].fillna(0.0)
+
     steps: list[WeatherStep] = []
     for idx, ts in enumerate(combined.index):
         row = combined.iloc[idx]
