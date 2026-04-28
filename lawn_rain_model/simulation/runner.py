@@ -93,5 +93,5 @@ def hours_to_mow(rows: list[dict[str, Any]], threshold: float) -> int | None:
     """Return the first hour where wetness_out ≤ threshold, or None."""
     for r in rows:
         if r["wetness_out"] <= threshold:
-            return r["hour"]
+            return int(r["hour"])
     return None

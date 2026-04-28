@@ -87,10 +87,12 @@ def resample_history(
     }).dropna(subset=["temp"])  # require at least temp data each hour
 
     steps: list[WeatherStep] = []
-    for idx, (ts, row) in enumerate(combined.iterrows()):
+    for idx, ts in enumerate(combined.index):
+        row = combined.iloc[idx]
+        # ts is a pandas Timestamp; .hour gives the clock hour
         steps.append(WeatherStep(
             hour=idx,
-            tod=ts.hour,  # type: ignore[union-attr]
+            tod=ts.hour,
             temp=float(row["temp"]),
             rh=float(row["rh"]),
             wind=float(row["wind"]),
