@@ -1,0 +1,348 @@
+# Lawn Wetness Index -- Test Scenarios
+# Calibration targets are USDA loam reference values for 1" rain on flat terrain.
+# All rain events: hour offset from simulation start (not time-of-day).
+#
+# weight: 0  --> runs and reports but does NOT pull the optimizer
+
+
+# =============================================================================
+# CALIBRATION SCENARIOS
+# =============================================================================
+
+scenarios:
+
+  # ---------------------------------------------------------------------------
+  # 1. Hot / sunny / low-humidity / moderate wind
+  #    Dominant: high VPD + wind + full solar.  Expected: 3-6h.
+  #    weight=1.5: tightest physical range, well-constrained.
+  # ---------------------------------------------------------------------------
+  - name: calib_hot_sunny
+    duration_hours: 48
+    rain_events:
+      - hour: 0
+        inches: 1.0
+    weather:
+      temp:   85
+      rh:     30
+      wind:   10
+      clouds: 10
+    use_solar_model: true
+    start_hour:  8
+    day_of_year: 172
+    latitude:    39.0
+    mow_threshold: 5.0
+    calibration:
+      target_hours_min: 3
+      target_hours_max: 6
+      weight: 1.5
+      note: "USDA loam: hot/sunny/low-RH/wind"
+
+  # ---------------------------------------------------------------------------
+  # 2. Warm / partly cloudy / medium humidity
+  #    Nominal real-world condition.  Expected: 10-16h.
+  #    weight=2.0: highest -- most representative and most certain.
+  # ---------------------------------------------------------------------------
+  - name: calib_warm_partly_cloudy
+    duration_hours: 72
+    rain_events:
+      - hour: 0
+        inches: 1.0
+    weather:
+      temp:   65
+      rh:     60
+      wind:   5
+      clouds: 50
+    use_solar_model: true
+    start_hour:  8
+    day_of_year: 172
+    latitude:    39.0
+    mow_threshold: 5.0
+    calibration:
+      target_hours_min: 10
+      target_hours_max: 16
+      weight: 2.0
+      note: "USDA loam: warm/partly-cloudy/medium-RH"
+
+  # ---------------------------------------------------------------------------
+  # 3. Cool / overcast / high humidity
+  #    Near-zero solar, suppressed VPD.  Expected: 20-30h.
+  #    Constrains the capillary + low-VPD evap floor.
+  #    weight=1.5
+  # ---------------------------------------------------------------------------
+  - name: calib_cool_overcast
+    duration_hours: 96
+    rain_events:
+      - hour: 0
+        inches: 1.0
+    weather:
+      temp:   50
+      rh:     80
+      wind:   3
+      clouds: 90
+    use_solar_model: true
+    start_hour:  8
+    day_of_year: 172
+    latitude:    39.0
+    mow_threshold: 5.0
+    calibration:
+      target_hours_min: 20
+      target_hours_max: 30
+      weight: 1.5
+      note: "USDA loam: cool/overcast/high-RH"
+
+  # ---------------------------------------------------------------------------
+  # 4. Cold / nighttime drainage only
+  #    weight=0: observing only. The 8-14h USDA target is a bulk workability
+  #    figure, not a surface-slip reference. Viscosity correction now attenuates
+  #    capillary correctly at 38F without needing this to pull the optimizer.
+  #    Keeping it to watch where the model lands after other targets are fit.
+  # ---------------------------------------------------------------------------
+  - name: calib_cold_night_drainage
+    duration_hours: 48
+    rain_events:
+      - hour: 0
+        inches: 1.0
+    weather:
+      temp:   38
+      rh:     95
+      wind:   1
+      clouds: 100
+      elevation: -10.0
+    use_solar_model: false
+    mow_threshold: 5.0
+    calibration:
+      target_hours_min: 8
+      target_hours_max: 14
+      weight: 0
+      note: "USDA bulk workability ref only -- weight=0, observe don't fit"
+
+  # ---------------------------------------------------------------------------
+  # 5. Humid summer -- high temp but VPD suppressed by humidity
+  #    80F + 78% RH: e_sat is high but vapor deficit is narrow.
+  #    Solar partially offset by afternoon cloud buildup typical of humid summer.
+  #    Expected: 10-18h. Stresses the VPD coupling at high temp + high RH.
+  #    weight=1.5
+  # ---------------------------------------------------------------------------
+  - name: calib_humid_summer
+    duration_hours: 72
+    rain_events:
+      - hour: 0
+        inches: 1.0
+    weather:
+      temp:   80
+      rh:     78
+      wind:   4
+      clouds: 55
+    use_solar_model: true
+    start_hour:  8
+    day_of_year: 200
+    latitude:    39.0
+    mow_threshold: 5.0
+    calibration:
+      target_hours_min: 10
+      target_hours_max: 18
+      weight: 1.5
+      note: "USDA loam: humid summer, VPD suppressed by high RH despite heat"
+
+  # ---------------------------------------------------------------------------
+  # 6. High wind / low humidity / clear sky
+  #    Strong wind dominates. Tests whether wind_cap is well-placed.
+  #    75F, 40% RH, 20mph, nearly clear: wind pushes drying hard.
+  #    Expected: 2-5h. If the model misses this, wind_coeff or wind_cap is off.
+  #    weight=1.5
+  # ---------------------------------------------------------------------------
+  - name: calib_high_wind
+    duration_hours: 24
+    rain_events:
+      - hour: 0
+        inches: 1.0
+    weather:
+      temp:   75
+      rh:     40
+      wind:   20
+      clouds: 15
+    use_solar_model: true
+    start_hour:  8
+    day_of_year: 172
+    latitude:    39.0
+    mow_threshold: 5.0
+    calibration:
+      target_hours_min: 2
+      target_hours_max: 5
+      weight: 1.5
+      note: "USDA loam: high wind dominant, low RH, clear sky"
+
+  # ---------------------------------------------------------------------------
+  # 7. Spring morning -- realistic wake-up scenario for the mower
+  #    58F rising to ~65F by afternoon. Moderate everything.
+  #    start_hour=6: catches morning cloud burn-off and afternoon drying window.
+  #    Expected: 14-22h. Tests mid-range parameter sensitivity.
+  #    weight=1.0: wider range reflects more scenario variability.
+  # ---------------------------------------------------------------------------
+  - name: calib_spring_morning
+    duration_hours: 72
+    rain_events:
+      - hour: 0
+        inches: 1.0
+    weather:
+      temp:   58
+      rh:     65
+      wind:   6
+      clouds: 45
+    use_solar_model: true
+    start_hour:  6
+    day_of_year: 100
+    latitude:    39.0
+    mow_threshold: 5.0
+    calibration:
+      target_hours_min: 14
+      target_hours_max: 22
+      weight: 1.0
+      note: "USDA loam: spring moderate conditions, realistic mow-day scenario"
+
+
+# =============================================================================
+# EXPLORATION SCENARIOS (no calibration target)
+# =============================================================================
+
+  - name: baseline_dry
+    duration_hours: 24
+    initial_wetness: 0.0
+    rain_events: []
+    weather:
+      temp: 75
+      rh: 60
+      wind: 5
+      clouds: 30
+    use_solar_model: true
+    start_hour: 6
+    day_of_year: 172
+    latitude: 39.0
+
+  - name: light_rain_0.25in
+    duration_hours: 48
+    rain_events:
+      - hour: 0
+        inches: 0.25
+    weather:
+      temp: 75
+      rh: 65
+      wind: 5
+      clouds: 40
+    use_solar_model: true
+    start_hour: 14
+    day_of_year: 172
+    latitude: 39.0
+
+  - name: moderate_rain_0.75in
+    duration_hours: 72
+    rain_events:
+      - hour: 0
+        inches: 0.75
+    weather:
+      temp: 72
+      rh: 70
+      wind: 4
+      clouds: 50
+    use_solar_model: true
+    start_hour: 8
+    day_of_year: 172
+    latitude: 39.0
+
+  - name: heavy_rain_1.5in
+    duration_hours: 96
+    rain_events:
+      - hour: 0
+        inches: 1.5
+    weather:
+      temp: 68
+      rh: 75
+      wind: 3
+      clouds: 60
+    use_solar_model: true
+    start_hour: 18
+    day_of_year: 172
+    latitude: 39.0
+
+  - name: worst_case_2.5in_overcast
+    duration_hours: 120
+    rain_events:
+      - hour: 0
+        inches: 2.5
+    weather:
+      temp: 65
+      rh: 90
+      wind: 2
+      clouds: 90
+    use_solar_model: true
+    start_hour: 0
+    day_of_year: 172
+    latitude: 39.0
+
+  - name: split_storms_1in_total
+    duration_hours: 72
+    rain_events:
+      - hour: 0
+        inches: 0.5
+      - hour: 6
+        inches: 0.5
+    weather:
+      temp: 70
+      rh: 72
+      wind: 4
+      clouds: 55
+    use_solar_model: true
+    start_hour: 6
+    day_of_year: 172
+    latitude: 39.0
+
+  - name: winter_rain_0.5in
+    duration_hours: 96
+    rain_events:
+      - hour: 0
+        inches: 0.5
+    weather:
+      temp: 45
+      rh: 80
+      wind: 8
+      clouds: 70
+    use_solar_model: true
+    start_hour: 8
+    day_of_year: 355
+    latitude: 39.0
+
+  - name: rain_on_wet_ground
+    duration_hours: 72
+    initial_wetness: 35.0
+    rain_events:
+      - hour: 12
+        inches: 0.5
+    weather:
+      temp: 70
+      rh: 68
+      wind: 5
+      clouds: 35
+    use_solar_model: true
+    start_hour: 6
+    day_of_year: 172
+    latitude: 39.0
+
+  # Cold/warm diurnal swing: 38F overnight -> 50F daytime.
+  # Mow gate opens at hour 8 when temp crosses threshold.
+  # Use this to visually inspect visc_factor column -- should see it rise
+  # as the day warms and capillary rate picks back up.
+  - name: diurnal_cold_to_warm
+    duration_hours: 48
+    rain_events:
+      - hour: 0
+        inches: 0.75
+    weather:
+      temp: 44
+      rh: 82
+      wind: 4
+      clouds: 60
+      elevation: 0.0
+    use_solar_model: true
+    start_hour: 22
+    day_of_year: 80
+    latitude: 39.0
