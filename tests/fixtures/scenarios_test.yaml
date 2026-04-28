@@ -2,7 +2,6 @@
 scenarios:
   - name: history_test_scenario
     history_file: test_history.csv
-    mow_threshold: 5.0
     calibration:
       target_hours: 12.0
       weight: 1.0
@@ -22,7 +21,6 @@ scenarios:
     start_hour: 8
     day_of_year: 172
     latitude: 39.0
-    mow_threshold: 5.0
     calibration:
       target_hours_min: 4
       target_hours_max: 10

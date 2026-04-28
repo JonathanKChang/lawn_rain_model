@@ -30,7 +30,6 @@ scenarios:
     start_hour:  8
     day_of_year: 172
     latitude:    39.0
-    mow_threshold: 5.0
     calibration:
       target_hours_min: 3
       target_hours_max: 6
@@ -56,7 +55,6 @@ scenarios:
     start_hour:  8
     day_of_year: 172
     latitude:    39.0
-    mow_threshold: 5.0
     calibration:
       target_hours_min: 10
       target_hours_max: 16
@@ -83,7 +81,6 @@ scenarios:
     start_hour:  8
     day_of_year: 172
     latitude:    39.0
-    mow_threshold: 5.0
     calibration:
       target_hours_min: 20
       target_hours_max: 30
@@ -109,7 +106,6 @@ scenarios:
       clouds: 100
       elevation: -10.0
     use_solar_model: false
-    mow_threshold: 5.0
     calibration:
       target_hours_min: 8
       target_hours_max: 14
@@ -137,7 +133,6 @@ scenarios:
     start_hour:  8
     day_of_year: 200
     latitude:    39.0
-    mow_threshold: 5.0
     calibration:
       target_hours_min: 10
       target_hours_max: 18
@@ -165,7 +160,6 @@ scenarios:
     start_hour:  8
     day_of_year: 172
     latitude:    39.0
-    mow_threshold: 5.0
     calibration:
       target_hours_min: 2
       target_hours_max: 5
@@ -193,7 +187,6 @@ scenarios:
     start_hour:  6
     day_of_year: 100
     latitude:    39.0
-    mow_threshold: 5.0
     calibration:
       target_hours_min: 14
       target_hours_max: 22
