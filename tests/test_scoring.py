@@ -29,7 +29,7 @@ def _build_history_csv(
     """
     lines: list[str] = ["entity_id,state,last_changed"]
     for h in range(hours):
-        hour = 6 + h
+        hour = h  # 0–23 to stay within a single day
         ts = f"2026-04-24T{hour:02d}:00:00.000Z"
         lines.append(f"sensor.pirateweather_temperature_0h,85.0,{ts}")
         lines.append(f"sensor.pirateweather_humidity_0h,30.0,{ts}")
@@ -99,7 +99,7 @@ def test_score_scenario_never_dries(tmp_path: Path, model: SingleLayerModel) -> 
     # Rain every hour — lawn stays wet
     lines: list[str] = ["entity_id,state,last_changed"]
     for h in range(24):
-        hour = 10 + h
+        hour = h  # 0–23 to stay within a single day
         ts = f"2026-04-24T{hour:02d}:00:00.000Z"
         accum = round(h * 0.5, 2)
         lines.append(f"sensor.pirateweather_temperature_0h,80.0,{ts}")

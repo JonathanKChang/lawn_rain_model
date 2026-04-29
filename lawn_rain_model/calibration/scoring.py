@@ -45,17 +45,19 @@ def score_scenario(
 
     cal = scenario.calibration
     target = cal.target_hours_min
-    error = (h2m - target) if h2m is not None else None
     loss = scenario_loss(h2m, cal, scenario.duration_hours)
 
     if h2m is None:
+        error: float | None = None
         status = "NEVER_DRIED"
-    elif abs(error) < 1.0:
-        status = "CLOSE"
-    elif abs(error) < 3.0:
-        status = "MODERATE"
     else:
-        status = "POOR"
+        error = h2m - target
+        if abs(error) < 1.0:
+            status = "CLOSE"
+        elif abs(error) < 3.0:
+            status = "MODERATE"
+        else:
+            status = "POOR"
 
     return {
         "name": scenario.name,
