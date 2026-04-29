@@ -1,5 +1,5 @@
 # lawn_rain_model/cli/commands.py
-"""CLI commands: simulate, sweep, optimize."""
+"""CLI commands: simulate, sweep, optimize, csv-run."""
 from __future__ import annotations
 import argparse
 import csv as csv_mod
@@ -13,6 +13,7 @@ from lawn_rain_model.calibration.scenarios import Scenario, ScenarioLoader, Weat
 from lawn_rain_model.calibration.optimizer import run_optimizer
 from lawn_rain_model.calibration.loss import scenario_loss
 from lawn_rain_model.simulation.runner import run_scenario, hours_to_mow
+from lawn_rain_model.simulation.weather import resample_history, DEFAULT_SENSOR_MAP
 from lawn_rain_model.cli.display import (
     print_table, print_summary, print_jinja2, print_optimizer_report,
 )
@@ -225,6 +226,81 @@ def cmd_sweep(args: argparse.Namespace) -> None:
               f"{str(h2m)+'h' if h2m is not None else '>'+str(args.hours)+'h'}")
 
 
+def cmd_csv_run(args: argparse.Namespace) -> None:
+    """Run the wetness model on one or more Home Assistant history CSVs."""
+    model = SingleLayerModel()
+    params = _load_params(args.params_file, model)
+
+    csv_files = [Path(p) for p in args.csv_file]
+    if not csv_files:
+        print("Error: at least one CSV file required (use -f / --csv-file)", file=sys.stderr)
+        sys.exit(1)
+
+    # Build a combined sensor map; user overrides take precedence
+    sensor_map = {**DEFAULT_SENSOR_MAP}
+    if args.sensor_map:
+        sm = yaml.safe_load(Path(args.sensor_map).read_text()).get("sensor_map", {})
+        sensor_map.update(sm)
+
+    initial_wetness = args.initial
+    output_prefix = Path(args.output) if args.output else None
+
+    for csv_path in csv_files:
+        if not csv_path.is_file():
+            print(f"Error: CSV not found: {csv_path}", file=sys.stderr)
+            sys.exit(1)
+
+        # Derive a scenario name from the filename
+        stem = csv_path.stem
+        scenario = Scenario(
+            name=stem,
+            duration_hours=999,  # unlimited — driven by CSV length
+            rain_events=[],
+            weather=None,
+            initial_wetness=initial_wetness,
+            history_file=str(csv_path),
+            sensor_map=sensor_map,
+        )
+
+        # Build weather steps from the CSV
+        weather_steps = resample_history(csv_path, sensor_map)
+        if not weather_steps:
+            print(f"\n  ⚠  {csv_path.name}: no weather steps found, skipping.")
+            continue
+
+        # Run the model (stop_after_mow auto-enabled for history data)
+        rows = run_scenario(scenario, model, params, weather_steps=weather_steps,
+                            stop_after_mow=True)
+
+        # Display
+        print(f"\n{'='*80}")
+        print(f"  CSV: {csv_path.name}  |  {len(weather_steps)} hours  "
+              f"({weather_steps[0].tod:02d}:00 → {weather_steps[-1].tod:02d}:00)")
+        print(f"{'='*80}")
+
+        if not args.summary_only:
+            print_table(rows, scenario, params)
+        print_summary(rows, scenario, params)
+
+        # Write output CSV
+        if output_prefix:
+            out_path = Path(str(output_prefix) + f"_{stem}.csv")
+        else:
+            out_path = Path(str(csv_path.with_suffix("")) + f"_{stem}.csv")
+        with open(out_path, "w", newline="") as f:
+            flat_rows = []
+            for r in rows:
+                flat = {k: v for k, v in r.items() if k != "diagnostics"}
+                flat.update(r.get("diagnostics", {}))
+                flat_rows.append(flat)
+            w_csv = csv_mod.DictWriter(f, fieldnames=flat_rows[0].keys())
+            w_csv.writeheader()
+            w_csv.writerows(flat_rows)
+        print(f"  Output CSV -> {out_path}")
+
+    print_jinja2(params)
+
+
 def cmd_optimize(args: argparse.Namespace) -> None:
     model = SingleLayerModel()
     all_scenarios = ScenarioLoader.load(args.scenario_file, include_calibration=True)
@@ -281,6 +357,18 @@ def build_parser() -> argparse.ArgumentParser:
     sim.add_argument("--save-params",  metavar="FILE")
     sim.add_argument("--csv")
 
+    csv_sub = sub.add_parser("csv-run")
+    csv_sub.add_argument("-f", "--csv-file", nargs="+", required=True,
+                         metavar="CSV", help="One or more HA history CSV files")
+    csv_sub.add_argument("-P", "--params-file", metavar="FILE")
+    csv_sub.add_argument("--sensor-map", metavar="FILE",
+                         help="YAML file with sensor_map override")
+    csv_sub.add_argument("--initial", type=float, default=0.0,
+                         help="Initial wetness index (default: 0)")
+    csv_sub.add_argument("--output", "-o", metavar="PREFIX",
+                         help="Output CSV prefix (appends _<stem>.csv)")
+    csv_sub.add_argument("--summary-only", action="store_true")
+
     sw = sub.add_parser("sweep")
     sw.add_argument("-P", "--params-file")
     sw.add_argument("--rain-inches", default="0.1,0.25,0.5,0.75,1.0,1.5,2.0,2.5")
@@ -309,4 +397,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     args = build_parser().parse_args()
-    {"simulate": cmd_simulate, "sweep": cmd_sweep, "optimize": cmd_optimize}[args.cmd](args)
+    dispatch = {
+        "simulate": cmd_simulate,
+        "sweep": cmd_sweep,
+        "optimize": cmd_optimize,
+        "csv-run": cmd_csv_run,
+    }
+    dispatch[args.cmd](args)

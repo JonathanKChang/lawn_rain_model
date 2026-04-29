@@ -9,6 +9,8 @@ BAR_WIDTH = 40
 
 
 def sparkline(value: float, stage_thresh: float = 18.0, pool_thresh: float = 40.0) -> str:
+    if value != value:  # NaN check
+        return "[????????????????????????????????????????]"
     filled = max(0, min(BAR_WIDTH, int(round(value / 100.0 * BAR_WIDTH))))
     bar = list("\u2588" * filled + "\u00b7" * (BAR_WIDTH - filled))
     for thresh in [stage_thresh, pool_thresh]:
@@ -94,7 +96,6 @@ def print_jinja2(params: dict[str, float]) -> None:
 {{%- set _vpd_min         = {p['vpd_min']:.5f} %}}
 {{%- set _sun_coeff       = {p['sun_coeff']:.5f} %}}
 {{%- set _cloud_exp       = {p['cloud_exp']:.5f} %}}
-{{%- set _solar_exp       = {p['solar_exp']:.5f} %}}
 {{%- set _wind_coeff      = {p['wind_coeff']:.5f} %}}
 {{%- set _wind_cap        = {p['wind_cap']:.5f} %}}
 {{%- set _stage_thresh    = {p['stage_thresh']:.3f} %}}
