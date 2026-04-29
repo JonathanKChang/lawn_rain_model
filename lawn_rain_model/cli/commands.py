@@ -17,6 +17,7 @@ from lawn_rain_model.simulation.weather import resample_history, DEFAULT_SENSOR_
 from lawn_rain_model.cli.display import (
     print_table, print_summary, print_jinja2, print_optimizer_report,
 )
+from lawn_rain_model.calibration.scoring import score_all_scenarios, print_score_report
 
 
 def _load_params(params_file: str | None, model: SingleLayerModel) -> dict[str, float]:
@@ -333,6 +334,21 @@ def cmd_optimize(args: argparse.Namespace) -> None:
         print(f"\n  Params saved -> {args.save_params}")
 
 
+def cmd_score(args: argparse.Namespace) -> None:
+    """Score scenarios against their calibration targets."""
+    model = SingleLayerModel()
+    params = _load_params(args.params_file, model)
+    scenarios = ScenarioLoader.load(args.scenario_file)
+
+    if args.name:
+        scenarios = [s for s in scenarios if s.name == args.name]
+        if not scenarios:
+            sys.exit(f"No scenario '{args.name}'")
+
+    scores = score_all_scenarios(scenarios, model, params)
+    print_score_report(scores)
+
+
 def build_parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(prog="lawn_rain_model")
     sub  = root.add_subparsers(dest="cmd", required=True)
@@ -392,6 +408,11 @@ def build_parser() -> argparse.ArgumentParser:
     opt.add_argument("--tol",         type=float, default=1e-5)
     opt.add_argument("--seed",        type=int,   default=42)
 
+    sc = sub.add_parser("score")
+    sc.add_argument("-f", "--scenario-file", required=True)
+    sc.add_argument("-P", "--params-file", metavar="FILE")
+    sc.add_argument("-n", "--name", metavar="NAME")
+
     return root
 
 
@@ -402,5 +423,6 @@ def main() -> None:
         "sweep": cmd_sweep,
         "optimize": cmd_optimize,
         "csv-run": cmd_csv_run,
+        "score": cmd_score,
     }
     dispatch[args.cmd](args)
