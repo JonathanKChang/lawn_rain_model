@@ -94,7 +94,8 @@ lawn_rain_model/
 ├── calibration/
 │   ├── scenarios.py         # Scenario, CalibrationTarget, ScenarioLoader
 │   ├── loss.py              # scenario_loss() — range + point targets
-│   └── optimizer.py         # Differential evolution parameter fitting
+│   ├── optimizer.py         # Differential evolution parameter fitting
+│   └── scoring.py           # score_scenario(), print_score_report()
 └── cli/
     ├── display.py           # Terminal tables, sparklines, summaries
     └── commands.py          # CLI: simulate, sweep, optimize
@@ -181,6 +182,49 @@ python simulator.py optimize -f scenarios.yaml --save-params params_optimized.ya
 | `--seed` | Random seed | 42 |
 
 The optimizer prints a comparison table showing each scenario's target range, actual mow time, and loss. Parameters that changed >20% from defaults are flagged with `<!--`.
+
+### `score` — Scenario Evaluation
+
+Evaluate model predictions against calibration targets for all scenarios in a YAML file:
+
+```bash
+python simulator.py score -f scenarios.yaml
+```
+
+| Flag | Description | Default |
+|---|---|---|
+| `-f, --scenario-file` | YAML scenarios file (required) | — |
+| `-P, --params-file` | Parameter override file | default params |
+| `-n, --name` | Filter to single scenario | all |
+
+**Example output:**
+
+```
+========================================================================
+  SCENARIO SCORING REPORT
+========================================================================
+
+  Scenario                            Predicted     Target    Error      Loss  Status
+  --------------------------------------------------------------------------------
+  calib_hot_sunny                         5h        4.5h    +0.5h   0.1111  CLOSE
+  calib_cold_rainy                       14h       12.0h   +2.0h   0.4444  MODERATE
+  calib_night_drain                      never      18.0h        —  1024.0000  NEVER_DRIED
+
+  Total loss: 1024.5555
+========================================================================
+```
+
+**Status labels:**
+
+| Status | Meaning |
+|---|---|
+| `CLOSE` | Prediction within ±1 hour of target |
+| `MODERATE` | Prediction within ±3 hours of target |
+| `POOR` | Prediction more than ±3 hours from target |
+| `NEVER_DRIED` | Lawn never dropped below mow threshold |
+| `NO_TARGET` | Scenario has no calibration target (informational only) |
+
+**Loss interpretation:** The loss is a squared normalized distance from the target range. `0.0` means a perfect match. Higher values indicate worse predictions. The total loss is the sum across all scenarios.
 
 ## Scenario YAML
 
@@ -366,6 +410,7 @@ pytest tests/ -v
 | `test_solar.py` | 5 — solar elevation angle |
 | `test_runner.py` | 11 — scenario execution, weather generation |
 | `test_loss.py` | 11 — range and point target loss |
+| `test_scoring.py` | 5 — score_scenario, score_all_scenarios, print_score_report |
 | `test_scenarios.py` | 8 — YAML loading, calibration targets |
 | `test_resampler.py` | 10 — HA CSV → WeatherStep, midnight reset |
 | `test_history_runner.py` | 4 — end-to-end history pipeline |
