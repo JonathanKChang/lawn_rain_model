@@ -171,18 +171,25 @@ def run_scenario(
     return rows
 
 
-def hours_to_mow(rows: list[dict[str, Any]], threshold: float) -> int | None:
+def hours_to_mow(
+    rows: list[dict[str, Any]],
+    threshold: float,
+    steps_per_hour: int = 1,
+) -> int | None:
     """
     Return the first hour where wetness_out ≤ threshold *after* the lawn
     has been wet (wetness > threshold at any earlier point).
+
+    For sub-hourly resolution, the hour is computed as
+    ``first_matching_sub_step // steps_per_hour``.
 
     This skips the initial dry period so that CSVs starting with low
     wetness don't report hour-0 mow when rain hasn't actually occurred yet.
     """
     became_wet = False
-    for r in rows:
+    for i, r in enumerate(rows):
         if r["wetness_out"] > threshold:
             became_wet = True
         elif became_wet and r["wetness_out"] <= threshold:
-            return int(r["hour"])
+            return int(i // steps_per_hour)
     return None
