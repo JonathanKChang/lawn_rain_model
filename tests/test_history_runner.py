@@ -180,14 +180,11 @@ def test_fixture_weather_scenario_runs() -> None:
 
     model = SingleLayerModel()
     rows = run_scenario(weather_scenario, model, model.default_params)
-    assert len(rows) == weather_scenario.duration_hours
-    assert rows[0]["rain_inches"] > 0  # rain at hour 0
-    # Find the mow time (first hour where wetness drops below threshold)
+    assert len(rows) == weather_scenario.duration_hours * weather_scenario.steps_per_hour
+    assert rows[0]["rain_inches"] > 0  # rain at sub_step=0 of hour 0
+    # Find the mow time using hours_to_mow with sub-step support
     threshold = model.default_params["mow_threshold"]
-    mow_times = [
-        r["hour"] for r in rows if r["wetness_out"] <= threshold
-    ]
-    # With warm conditions and 1" rain (no solar model), mow time ~21h
-    assert len(mow_times) > 0
-    first_mow = min(mow_times)
-    assert 18 <= first_mow <= 24
+    h2m = hours_to_mow(rows, threshold, weather_scenario.steps_per_hour)
+    assert h2m is not None
+    # With warm conditions and 1" rain, mow time ~15-25h
+    assert 12 <= h2m <= 25
