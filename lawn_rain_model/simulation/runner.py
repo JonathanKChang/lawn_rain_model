@@ -49,6 +49,7 @@ def _expand_to_substeps(
                 elevation = h_step.elevation
             else:
                 # Linear interpolation between current and next hour
+                assert n_step is not None  # mypy needs this
                 temp = h_step.temp * (1 - fraction) + n_step.temp * fraction
                 rh = h_step.rh * (1 - fraction) + n_step.rh * fraction
                 wind = h_step.wind * (1 - fraction) + n_step.wind * fraction
@@ -103,7 +104,7 @@ def build_weather_steps(
         )
         w = scenario.weather
         rain_map = {e.hour: e.inches for e in scenario.rain_events}
-        hourly_steps: list[WeatherStep] = []
+        weather_steps: list[WeatherStep] = []
         for h in range(scenario.duration_hours):
             tod = (scenario.start_hour + h) % 24
             elev = (
@@ -111,13 +112,13 @@ def build_weather_steps(
                 if scenario.use_solar_model
                 else w.elevation
             )
-            hourly_steps.append(WeatherStep(
+            weather_steps.append(WeatherStep(
                 hour=h, sub_step=0, tod=tod,
                 temp=w.temp, rh=w.rh, wind=w.wind, clouds=w.clouds,
                 elevation=elev,
                 rain_inches=rain_map.get(h, 0.0),
             ))
-        return _expand_to_substeps(hourly_steps, scenario, is_history=False)
+        return _expand_to_substeps(weather_steps, scenario, is_history=False)
 
 
 def run_scenario(
