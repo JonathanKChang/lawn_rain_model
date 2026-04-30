@@ -32,8 +32,8 @@ def _expand_to_substeps(
 
     steps: list[WeatherStep] = []
     for idx, h_step in enumerate(hourly_steps):
-        rain = h_step.rain_inches if h_step.sub_step == 0 else 0.0
         for ss in range(sph):
+            rain = h_step.rain_inches if ss == 0 else 0.0
             fraction = ss / sph
 
             # Get next hour's weather for interpolation

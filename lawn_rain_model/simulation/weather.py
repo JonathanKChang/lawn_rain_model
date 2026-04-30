@@ -26,8 +26,6 @@ class WeatherStep:
     steps with sub_step=0..steps_per_hour-1.
     """
     hour: int           # clock hour index (0, 1, 2, ...)
-    sub_step: int       # position within the hour (0..steps_per_hour-1)
-    steps_per_hour: int = 1  # number of sub-steps per clock hour
     tod: int            # time of day 0–23
     temp: float         # °F
     rh: float           # relative humidity 0–100
@@ -35,6 +33,8 @@ class WeatherStep:
     clouds: float       # 0–100
     elevation: float    # solar elevation angle, degrees
     rain_inches: float  # rain that fell during this sub-step
+    sub_step: int       = 0  # position within the hour (0..steps_per_hour-1)
+    steps_per_hour: int = 1  # number of sub-steps per clock hour
 
 
 def resample_history(
