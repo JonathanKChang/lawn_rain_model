@@ -58,6 +58,7 @@ def _expand_to_substeps(
             steps.append(WeatherStep(
                 hour=h_step.hour,
                 sub_step=ss,
+                steps_per_hour=sph,
                 tod=h_step.tod,
                 temp=temp,
                 rh=rh,

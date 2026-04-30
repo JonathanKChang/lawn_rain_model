@@ -3,7 +3,13 @@
 Single-layer surface wetness model.
 
 Mirrors the Home Assistant Jinja2 model exactly.
-All rate constants assume a 1-hour update interval.
+All rate constants assume a 1-hour update interval; they are divided
+by ``steps_per_hour`` (from the WeatherStep) for sub-hourly resolution.
+
+Because all drying mechanisms are linear in wetness
+(pool_drain = depth×coef, capillary = soil_wetness×rate,
+evaporation = base×factors×stage_factor), linear scaling is
+mathematically stable at any step size.
 """
 from __future__ import annotations
 import math
@@ -79,6 +85,10 @@ class SingleLayerModel:
         p = params
         wetness = state
 
+        # Time-step scaling: all rates are per-hour, divide by
+        # steps_per_hour for sub-hourly resolution.
+        sph = weather.steps_per_hour
+
         # Rain input (capped at 100)
         pre_dry = min(wetness + weather.rain_inches * p["rain_mult"], 100.0)
 
@@ -112,7 +122,8 @@ class SingleLayerModel:
         capillary_sink = soil_wetness * p["capillary_rate"] * visc_factor
 
         drying_rate = pool_drain + capillary_sink + evap_rate
-        wetness_out = max(pre_dry - drying_rate, 0.0)
+        # Scale down for sub-hourly steps; return unscaled for display
+        wetness_out = max(pre_dry - drying_rate / sph, 0.0)
 
         return {
             "wetness_out": wetness_out,
