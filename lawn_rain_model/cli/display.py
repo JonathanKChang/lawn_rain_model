@@ -41,8 +41,15 @@ def print_table(rows: list[dict[str, Any]], scenario: Scenario, params: dict[str
         mow = "  [MOW]" if r["can_mow"] else ""
         bar = sparkline(w, stage_thresh, pool_thresh)
         rs  = f"{r['rain_inches']:.2f}" if r["rain_inches"] > 0 else "     "
+        # Show sub-step in hour column (e.g., "8.25" for hour 8, sub_step 1 of 4)
+        sub = r.get("sub_step", 0)
+        sph = r.get("steps_per_hour", 1)
+        if sub > 0 and sph > 1:
+            hour_str = f"{r['hour']}.{sub/sph:.2f}"
+        else:
+            hour_str = str(r["hour"])
         print(
-            f"{r['hour']:>3}  {r['tod']:>02d}:00  {rs:>5}  "
+            f"{hour_str:>5}  {r['tod']:>02d}:00  {rs:>5}  "
             f"{w:>5.1f}  {d.get('evap_rate', 0.0):>5.3f}  "
             f"{d.get('pool_drain_rate', 0.0):>5.3f}  "
             f"{d.get('capillary_sink', 0.0):>5.3f}  "

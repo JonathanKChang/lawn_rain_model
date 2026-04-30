@@ -149,15 +149,17 @@ def run_scenario(
         wetness_out = result["wetness_out"]
 
         rows.append({
-            "hour":        ws.hour,
-            "tod":         ws.tod,
-            "elevation":   ws.elevation,
-            "rain_inches": ws.rain_inches,
-            "wetness_in":  wetness_in,
-            "wetness_out": wetness_out,
-            "drying_rate": result["drying_rate"],
-            "can_mow":     wetness_out <= mow_threshold,
-            "diagnostics": result["diagnostics"],
+            "hour":           ws.hour,
+            "sub_step":       ws.sub_step,
+            "steps_per_hour": ws.steps_per_hour,
+            "tod":            ws.tod,
+            "elevation":      ws.elevation,
+            "rain_inches":    ws.rain_inches,
+            "wetness_in":     wetness_in,
+            "wetness_out":    wetness_out,
+            "drying_rate":    result["drying_rate"],
+            "can_mow":        wetness_out <= mow_threshold,
+            "diagnostics":    result["diagnostics"],
         })
 
         if stop_after_mow:
