@@ -148,6 +148,7 @@ def cmd_simulate(args: argparse.Namespace) -> None:
             start_hour=args.start_hour,
             day_of_year=args.day_of_year,
             latitude=args.lat,
+            time_step_minutes=args.time_step,
         )]
 
     for s in scenarios:
@@ -219,6 +220,7 @@ def cmd_sweep(args: argparse.Namespace) -> None:
             start_hour=args.start_hour,
             day_of_year=args.day_of_year,
             latitude=args.lat,
+            time_step_minutes=args.time_step,
         )
         rows = run_scenario(s, model, params)
         h2m  = hours_to_mow(rows, params["mow_threshold"], s.steps_per_hour)
@@ -368,6 +370,8 @@ def build_parser() -> argparse.ArgumentParser:
     sim.add_argument("--start-hour",   type=int,   default=6)
     sim.add_argument("--day-of-year",  type=int,   default=172)
     sim.add_argument("--lat",          type=float, default=39.0)
+    sim.add_argument("--time-step",    type=int,   default=15,
+                     help="Time step in minutes (5,10,15,20,30,60; default: 15)")
     sim.add_argument("--no-solar",     action="store_true")
     sim.add_argument("--summary-only", action="store_true")
     sim.add_argument("--save-params",  metavar="FILE")
@@ -396,6 +400,8 @@ def build_parser() -> argparse.ArgumentParser:
     sw.add_argument("--start-hour",  type=int,   default=6)
     sw.add_argument("--day-of-year", type=int,   default=172)
     sw.add_argument("--lat",         type=float, default=39.0)
+    sw.add_argument("--time-step",   type=int,   default=15,
+                     help="Time step in minutes (5,10,15,20,30,60; default: 15)")
     sw.add_argument("--no-solar",    action="store_true")
 
     opt = sub.add_parser("optimize")
