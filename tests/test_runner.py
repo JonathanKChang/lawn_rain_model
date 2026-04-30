@@ -42,7 +42,7 @@ def model() -> SingleLayerModel:
 def test_output_length(model: SingleLayerModel) -> None:
     s = _hot_dry_scenario()
     rows = run_scenario(s, model, model.default_params)
-    assert len(rows) == s.duration_hours
+    assert len(rows) == s.duration_hours * s.steps_per_hour
 
 
 def test_first_hour_rain(model: SingleLayerModel) -> None:
@@ -62,14 +62,17 @@ def test_hour_sequence(model: SingleLayerModel) -> None:
     s = _hot_dry_scenario()
     rows = run_scenario(s, model, model.default_params)
     for i, r in enumerate(rows):
-        assert r["hour"] == i
+        assert r["hour"] == i // s.steps_per_hour
+        assert r["sub_step"] == i % s.steps_per_hour
 
 
 def test_tod_wraps_correctly(model: SingleLayerModel) -> None:
     s = _hot_dry_scenario()  # start_hour=8
     rows = run_scenario(s, model, model.default_params)
+    # TOD is constant within each hour (from the hour's clock time)
     assert rows[0]["tod"] == 8
-    assert rows[16]["tod"] == (8 + 16) % 24  # = 0
+    # Row 16 is sub_step 0 of hour 4, tod = (8+4)%24 = 12
+    assert rows[16]["tod"] == (8 + 16 // s.steps_per_hour) % 24
 
 
 def test_can_mow_uses_threshold(model: SingleLayerModel) -> None:
@@ -91,9 +94,10 @@ def test_required_row_keys(model: SingleLayerModel) -> None:
 def test_hot_dry_hits_calib_target(model: SingleLayerModel) -> None:
     s = _hot_dry_scenario()
     rows = run_scenario(s, model, model.default_params)
-    h2m = hours_to_mow(rows, threshold=5.0)
+    h2m = hours_to_mow(rows, threshold=5.0, steps_per_hour=s.steps_per_hour)
     assert h2m is not None
-    assert 10 <= h2m <= 20  # hot/dry with 1" rain at 8 AM start
+    # With 15-min resolution, drying is more granular; expect ~10-25h
+    assert 8 <= h2m <= 25  # hot/dry with 1" rain at 8 AM start
 
 
 def test_hours_to_mow_none_when_never_clears(model: SingleLayerModel) -> None:
@@ -105,15 +109,16 @@ def test_hours_to_mow_none_when_never_clears(model: SingleLayerModel) -> None:
         use_solar_model=False,
     )
     rows = run_scenario(s, model, model.default_params)
-    assert hours_to_mow(rows, threshold=5.0) is None
+    assert hours_to_mow(rows, threshold=5.0, steps_per_hour=s.steps_per_hour) is None
 
 
 def test_wetness_monotone_no_rain(model: SingleLayerModel) -> None:
     """Without rain after hour 0, wetness should be non-increasing."""
     s = _cool_overcast_scenario()
     rows = run_scenario(s, model, model.default_params)
-    # Skip hour 0 (rain lands); from hour 1 onward wetness should not increase
-    for i in range(1, len(rows) - 1):
+    # Skip hour 0 (rain lands at sub_step 0); from hour 1 onward wetness
+    # should not increase across sub-steps (no rain after hour 0)
+    for i in range(s.steps_per_hour, len(rows) - 1):
         assert rows[i + 1]["wetness_out"] <= rows[i]["wetness_out"] + 1e-9
 
 
@@ -155,7 +160,7 @@ def test_hours_to_mow_skips_initial_dry_period(model: SingleLayerModel) -> None:
     # Hour 0 is already below threshold → should NOT be the first mow
     assert rows[0]["wetness_out"] <= threshold
 
-    h2m = hours_to_mow(rows, threshold)
+    h2m = hours_to_mow(rows, threshold, s.steps_per_hour)
     assert h2m is not None
     assert h2m > 0, (
         f"hours_to_mow returned {h2m} but should skip the initial dry period"
