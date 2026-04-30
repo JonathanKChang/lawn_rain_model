@@ -80,6 +80,32 @@ The wetness index is a scalar value **0–100** representing surface water satur
 
 Rain adds wetness: `wetness + rain_inches * rain_mult`, capped at 100. Above ~0.3" the surface saturates; additional rain extends drying via pooling rather than further increasing surface saturation.
 
+**Note:** Rain is applied at **hourly granularity** regardless of time resolution. This matches the real sensor behavior (Pirate Weather `liquid_accumulation` updates hourly). The full rain amount for an hour is applied at the first sub-step, then sub-step drying is applied for the remaining sub-steps.
+
+### Time Resolution
+
+The model now supports configurable sub-hourly time resolution for more granular drying calculations.
+
+**Default:** 15 minutes (4 steps per hour). Configurable via:
+- `--time-step` CLI flag (values: 5, 10, 15, 20, 30, 60 minutes)
+- `time_step_minutes` field in scenario YAML
+
+**How it works:**
+- Each clock hour is expanded into `steps_per_hour` sub-steps (e.g., 4 sub-steps for 15-min resolution)
+- Weather values are **linearly interpolated** between consecutive hours for weather-backed scenarios
+- For history CSV scenarios, weather uses **forward-fill** (last observation carried forward)
+- Rain events apply only to the **first sub-step** (sub_step=0) of their target hour
+- Drying rates are divided by `steps_per_hour` before applying to wetness
+
+**Why this approach:**
+- All drying mechanisms are linear in wetness (pool_drain = depth×coef, capillary = soil_wetness×rate, evaporation = base×factors×stage_factor), so linear scaling is mathematically stable at any step size
+- Rain stays hourly to match real sensor behavior; splitting rain across sub-steps would change calibration
+- The sub-step approach provides smoother drying curves and more precise mow-time predictions
+
+**Trade-offs:**
+- The drying rate is a first-order approximation: dividing the hourly rate by `steps_per_hour` assumes linear drying within the hour, which is approximately true for these linear mechanisms
+- Calibration targets may need slight adjustment when changing time resolution, as the finer granularity can shift predicted mow times
+
 ## Architecture
 
 ```
@@ -131,6 +157,7 @@ python simulator.py simulate -f scenarios.yaml -n calib_hot_sunny --summary-only
 | `-f, --scenario-file` | YAML scenarios file | — |
 | `-n, --name` | Filter to single scenario | all |
 | `-P, --params-file` | Parameter override file(s) for comparison | default params |
+| `--time-step` | Time step in minutes (5,10,15,20,30,60) | 15 |
 | `--csv` | Output CSV file | — |
 | `--summary-only` | Skip the detailed table | false |
 | `--save-params FILE` | Save current params to file | — |
@@ -328,7 +355,9 @@ sensor.sun_elevation,45.0,2026-04-24T10:30:00.000Z
 
 ## Parameters
 
-All 16 parameters live in `params_default.yaml` (or any YAML with a `params:` key):
+All 16 parameters live in `params_default.yaml` (or any YAML with a `params:` key).
+
+**Note:** All rate parameters (`base_evap`, `capillary_rate`, `pool_drain_coef`, etc.) are **per-hour** values. At runtime, they are divided by `steps_per_hour` (default 4) for sub-hourly resolution.
 
 | Parameter | Default | Range | Description |
 |---|---|---|---|
