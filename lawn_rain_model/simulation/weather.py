@@ -19,15 +19,21 @@ DEFAULT_SENSOR_MAP: dict[str, str] = {
 
 @dataclass(frozen=True)
 class WeatherStep:
-    """One hour of weather conditions fed to the model."""
-    hour: int           # simulation index (0, 1, 2, ...)
+    """One sub-step of weather conditions fed to the model.
+
+    For hourly resolution, sub_step=0 and hour=step_index.
+    For sub-hourly resolution, each clock hour produces multiple
+    steps with sub_step=0..steps_per_hour-1.
+    """
+    hour: int           # clock hour index (0, 1, 2, ...)
+    sub_step: int       # position within the hour (0..steps_per_hour-1)
     tod: int            # time of day 0–23
     temp: float         # °F
     rh: float           # relative humidity 0–100
     wind: float         # mph
     clouds: float       # 0–100
     elevation: float    # solar elevation angle, degrees
-    rain_inches: float  # rain that fell during this hour
+    rain_inches: float  # rain that fell during this sub-step
 
 
 def resample_history(

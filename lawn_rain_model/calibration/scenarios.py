@@ -30,6 +30,9 @@ class CalibrationTarget:
     note:             str   = ""
 
 
+VALID_TIME_STEPS = {5, 10, 15, 20, 30, 60}
+
+
 @dataclass
 class Scenario:
     name:            str
@@ -41,9 +44,20 @@ class Scenario:
     start_hour:      int                  = 6
     day_of_year:     int                  = 172
     latitude:        float                = 39.0
+    time_step_minutes: int                = 15
     calibration:     Optional[CalibrationTarget] = None
     history_file:    Optional[str]        = None   # path relative to scenarios YAML
     sensor_map:      dict[str, str]       = field(default_factory=dict)
+
+    @property
+    def steps_per_hour(self) -> int:
+        """Number of simulation sub-steps per clock hour."""
+        if self.time_step_minutes not in VALID_TIME_STEPS:
+            raise ValueError(
+                f"time_step_minutes={self.time_step_minutes} must be one of "
+                f"{sorted(VALID_TIME_STEPS)}"
+            )
+        return 60 // self.time_step_minutes
 
 
 class ScenarioLoader:
