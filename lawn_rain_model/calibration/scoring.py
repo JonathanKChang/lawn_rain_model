@@ -31,7 +31,7 @@ def score_scenario(
     effective_params = params if params is not None else model.default_params
     rows = run_scenario(scenario, model, effective_params)
     threshold = effective_params.get("mow_threshold", 5.0)
-    h2m = hours_to_mow(rows, threshold)
+    h2m = hours_to_mow(rows, threshold, scenario.steps_per_hour)
 
     if scenario.calibration is None:
         return {

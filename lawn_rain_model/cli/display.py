@@ -55,7 +55,7 @@ def print_table(rows: list[dict[str, Any]], scenario: Scenario, params: dict[str
 
 
 def print_summary(rows: list[dict[str, Any]], scenario: Scenario, params: dict[str, float]) -> None:
-    first_mow = hours_to_mow(rows, params["mow_threshold"])
+    first_mow = hours_to_mow(rows, params["mow_threshold"], scenario.steps_per_hour)
     max_wet   = max(r["wetness_out"] for r in rows)
     mw_hr     = next(r["hour"] for r in rows if r["wetness_out"] == max_wet)
 
@@ -144,7 +144,7 @@ def print_optimizer_report(
     print("  " + "-" * 65)
     for s in calibration_scenarios:
         rows = run_scenario(s, model, p)
-        h2m  = hours_to_mow(rows, mow_th)
+        h2m  = hours_to_mow(rows, mow_th, s.steps_per_hour)
         loss = scenario_loss(h2m, s.calibration, s.duration_hours)  # type: ignore[arg-type]
         t    = s.calibration
         assert t is not None

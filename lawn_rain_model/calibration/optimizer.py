@@ -33,7 +33,7 @@ def build_objective(
         total = 0.0
         for s in calibration_scenarios:
             rows = run_scenario(s, model, p)
-            h2m  = hours_to_mow(rows, p["mow_threshold"])
+            h2m  = hours_to_mow(rows, p["mow_threshold"], s.steps_per_hour)
             loss = scenario_loss(h2m, s.calibration, s.duration_hours)  # type: ignore[arg-type]
             total += loss * s.calibration.weight  # type: ignore[union-attr]
         return total

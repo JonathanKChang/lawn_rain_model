@@ -55,7 +55,7 @@ def build_compare_table(
         row: list[str] = []
         for _, p in param_sets:
             rows = run_scenario(s, model, p)
-            h2m  = hours_to_mow(rows, p["mow_threshold"])
+            h2m  = hours_to_mow(rows, p["mow_threshold"], s.steps_per_hour)
             marker = _hit_marker(h2m, s)
             cell = _mow_cell(h2m, s)
             if marker:
@@ -221,7 +221,7 @@ def cmd_sweep(args: argparse.Namespace) -> None:
             latitude=args.lat,
         )
         rows = run_scenario(s, model, params)
-        h2m  = hours_to_mow(rows, params["mow_threshold"])
+        h2m  = hours_to_mow(rows, params["mow_threshold"], s.steps_per_hour)
         peak = max(r["wetness_out"] for r in rows)
         print(f"  {rain:>5.2f}\"  peak={peak:>5.1f}  "
               f"{str(h2m)+'h' if h2m is not None else '>'+str(args.hours)+'h'}")
