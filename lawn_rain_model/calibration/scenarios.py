@@ -114,6 +114,7 @@ class ScenarioLoader:
                 start_hour=s.get("start_hour", 6),
                 day_of_year=s.get("day_of_year", 172),
                 latitude=s.get("latitude", 39.0),
+                time_step_minutes=s.get("time_step_minutes", 15),
                 calibration=cal,
                 history_file=s.get("history_file"),
                 sensor_map=s.get("history_sensor_map", {}),
