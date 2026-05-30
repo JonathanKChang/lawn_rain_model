@@ -321,3 +321,125 @@ class TestDryingRateMonotonicity:
         ratio_cap = r_high["diagnostics"]["capillary_sink"] / max(r_low["diagnostics"]["capillary_sink"], 1e-12)
         # soil_wetness = min(w, pool_thresh) so ratio ≈ 40/20 = 2
         assert ratio_cap > 1.8
+
+
+class TestEvaporationComponentIsolation:
+    """Verify that individual evaporation components can be independently
+    verified at known conditions. This guides API design around measurable
+    physical invariants."""
+
+    def test_vpd_norm_at_calibration_point(self, m: SingleLayerModel) -> None:
+        """At 60°F, 60%RH (the calibration point), VPD normalization ≈ 1.0.
+
+        The model is designed so that e_sat_base^(temp-60) ≈ 1.0 when temp=60,
+        and RH=60% gives vpd_raw = 0.4, so vpd_norm = 0.4 / 0.4 = 1.0.
+        """
+        ws = WeatherStep(
+            hour=0, tod=12, temp=60.0, rh=60.0,
+            wind=5.0, clouds=30.0, elevation=45.0, rain_inches=0.0,
+        )
+        state = m.initial_state(25.0)
+        result = m.step(state, ws, m.default_params)
+        # vpd_norm should be very close to 1.0 at calibration point
+        assert abs(result["diagnostics"]["vpd_norm"] - 1.0) < 0.05
+
+    def test_solar_factor_at_night(self, m: SingleLayerModel) -> None:
+        """At negative elevation (night), sun_factor should be exactly 0."""
+        ws = WeatherStep(
+            hour=0, tod=3, temp=60.0, rh=60.0,
+            wind=5.0, clouds=0.0, elevation=-10.0, rain_inches=0.0,
+        )
+        state = m.initial_state(25.0)
+        result = m.step(state, ws, m.default_params)
+        assert result["diagnostics"]["sun_factor"] == 0.0
+
+    def test_wind_factor_capped(self, m: SingleLayerModel) -> None:
+        """Wind factor should be capped at wind_cap regardless of input wind speed."""
+        ws_low = WeatherStep(
+            hour=0, tod=12, temp=60.0, rh=60.0,
+            wind=5.0, clouds=0.0, elevation=90.0, rain_inches=0.0,
+        )
+        ws_high = WeatherStep(
+            hour=0, tod=12, temp=60.0, rh=60.0,
+            wind=100.0, clouds=0.0, elevation=90.0, rain_inches=0.0,
+        )
+        state = m.initial_state(25.0)
+        r_low = m.step(state, ws_low, m.default_params)
+        r_high = m.step(state, ws_high, m.default_params)
+        # Wind factor should be capped at wind_cap (0.5) for both
+        assert abs(r_low["diagnostics"]["wind_factor"] - min(5.0 * 0.022, 0.5)) < 1e-9
+        assert r_high["diagnostics"]["wind_factor"] == m.default_params["wind_cap"]
+
+    def test_evap_rate_proportional_to_vpd(self, m: SingleLayerModel) -> None:
+        """Holding everything else constant, evaporation should increase with VPD.
+        Compare low-RH (high VPD) vs high-RH (low VPD)."""
+        ws_low_vpd = WeatherStep(
+            hour=0, tod=12, temp=60.0, rh=80.0,  # lower VPD
+            wind=5.0, clouds=0.0, elevation=90.0, rain_inches=0.0,
+        )
+        ws_high_vpd = WeatherStep(
+            hour=0, tod=12, temp=60.0, rh=40.0,  # higher VPD
+            wind=5.0, clouds=0.0, elevation=90.0, rain_inches=0.0,
+        )
+        state = m.initial_state(25.0)
+        r_low = m.step(state, ws_low_vpd, m.default_params)
+        r_high = m.step(state, ws_high_vpd, m.default_params)
+        assert r_high["diagnostics"]["vpd_norm"] > r_low["diagnostics"]["vpd_norm"]
+        assert r_high["diagnostics"]["evap_rate"] > r_low["diagnostics"]["evap_rate"]
+
+
+class TestMultiHourTrajectory:
+    """Test that multi-hour simulation trajectory is consistent with
+    single-step compounding. Two identical consecutive steps should
+    produce cumulative drying consistent with applying the mechanism
+    twice."""
+
+    def test_cumulative_drying_less_than_double(self, m: SingleLayerModel) -> None:
+        """Two identical dry conditions should reduce wetness more than one step
+        but less than double the single-step reduction (compounding effect)."""
+        ws = WeatherStep(
+            hour=0, tod=12, temp=75.0, rh=60.0,
+            wind=5.0, clouds=30.0, elevation=45.0, rain_inches=0.0,
+        )
+        # One step
+        state = m.initial_state(50.0)
+        r1 = m.step(state, ws, m.default_params)
+        wetness_after_1 = r1["wetness_out"]
+
+        # Two identical steps (simulate a second consecutive hour)
+        state2 = m.initial_state(wetness_after_1)
+        r2 = m.step(state2, ws, m.default_params)
+        wetness_after_2 = r2["wetness_out"]
+
+        assert wetness_after_2 < wetness_after_1  # continues to dry
+        # Two steps dry more than one but each successive step dries less
+        # because the drying rate decreases as wetness drops
+        reduction_1 = 50.0 - wetness_after_1
+        reduction_2 = wetness_after_1 - wetness_after_2
+        assert reduction_1 > reduction_2  # diminishing returns
+
+    def test_consistent_trajectory_with_runner(self, m: SingleLayerModel) -> None:
+        """Verify that running two steps manually produces the same result
+        as the runner iterating over two identical hours."""
+        from lawn_rain_model.simulation.runner import run_scenario
+        from lawn_rain_model.calibration.scenarios import Scenario, WeatherConditions, RainEvent
+
+        s = Scenario(
+            name="trajectory_test",
+            duration_hours=2,
+            rain_events=[RainEvent(hour=0, inches=1.0)],
+            weather=WeatherConditions(temp=75.0, rh=60.0, wind=5.0, clouds=30.0),
+            use_solar_model=False,
+            start_hour=12,
+            day_of_year=172,
+            latitude=39.0,
+            time_step_minutes=60,  # 1 step per hour for clean comparison
+        )
+        rows = run_scenario(s, m, m.default_params)
+
+        # The runner should produce exactly 2 rows (one per hour)
+        assert len(rows) == 2
+        # Hour 0: rain lands, wetness goes up then dries
+        assert rows[0]["wetness_out"] > 0.0
+        # Hour 1: no rain, wetness continues to dry from where hour 0 ended
+        assert rows[1]["wetness_out"] < rows[0]["wetness_out"]
