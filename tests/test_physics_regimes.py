@@ -109,3 +109,114 @@ class TestStage1Evaporation:
         r_stage2 = _step(m, wetness=15.0)
         r_stage1 = _step(m, wetness=25.0)
         assert r_stage1["drying_rate"] > r_stage2["drying_rate"]
+
+
+class TestPoolDrainage:
+    """Pool regime: wetness >= pool_thresh (default 40.0).
+
+    Dominant mechanism: standing water drainage + Stage 1 evaporation.
+    Pool depth = wetness - pool_thresh.
+    Pool drain = pool_depth * pool_drain_coef.
+    """
+
+    def test_pool_drain_positive_above_thresh(self, m: SingleLayerModel) -> None:
+        """At wetness=45 (> pool_thresh=40), pool drainage should be positive."""
+        result = _step(m, wetness=45.0)
+        assert result["diagnostics"]["pool_drain_rate"] > 0.0
+        # Expected: (45 - 40) * 0.12 = 0.6
+        expected_pool_drain = 5.0 * m.default_params["pool_drain_coef"]
+        assert abs(result["diagnostics"]["pool_drain_rate"] - expected_pool_drain) < 1e-9
+
+    def test_pool_drain_scales_with_depth(self, m: SingleLayerModel) -> None:
+        """Pool drain should scale linearly with pool depth."""
+        r_shallow = _step(m, wetness=41.0)  # depth=1
+        r_deep = _step(m, wetness=51.0)     # depth=11
+        assert r_deep["diagnostics"]["pool_drain_rate"] > r_shallow["diagnostics"]["pool_drain_rate"]
+        ratio = r_deep["diagnostics"]["pool_drain_rate"] / max(r_shallow["diagnostics"]["pool_drain_rate"], 1e-12)
+        # depth ratio is 11:1, pool drain should scale similarly
+        assert 10.5 < ratio < 11.5
+
+    def test_pool_regime_still_has_evap(self, m: SingleLayerModel) -> None:
+        """Pool regime still has evaporation (Stage 1, stage_factor=1)."""
+        result = _step(m, wetness=60.0)
+        assert result["diagnostics"]["evap_rate"] > 0.0
+        assert result["diagnostics"]["stage_factor"] == 1.0
+
+    def test_pool_regime_still_has_capillary(self, m: SingleLayerModel) -> None:
+        """Pool regime still has capillary sink (soil_wetness = min(wetness, pool_thresh))."""
+        result = _step(m, wetness=60.0)
+        # soil_wetness = min(60, 40) = 40
+        expected_soil = m.default_params["pool_thresh"]
+        visc_factor = max(
+            1.0 - (70.0 - result.get("_temp", 75.0)) * m.default_params["visc_slope"],
+            m.default_params["visc_floor"],
+        )
+        expected_cap = expected_soil * m.default_params["capillary_rate"] * visc_factor
+        # Allow small tolerance for rounding
+        assert abs(result["diagnostics"]["capillary_sink"] - expected_cap) < 1e-6
+
+    def test_pool_dominates_total_drying(self, m: SingleLayerModel) -> None:
+        """At high wetness, pool drainage should be the dominant drying mechanism."""
+        result = _step(m, wetness=70.0)
+        pool = result["diagnostics"]["pool_drain_rate"]
+        evap = result["diagnostics"]["evap_rate"]
+        cap = result["diagnostics"]["capillary_sink"]
+        assert pool > evap, "Pool drainage should dominate evaporation at high wetness"
+        assert pool > cap, "Pool drainage should dominate capillary at high wetness"
+
+
+class TestBoundaryWetnessValues:
+    """Test that the model handles extreme wetness values without producing NaN,
+    overflow, or negative results. These are regression tests for boundary conditions."""
+
+    def test_wetness_zero_no_crash(self, m: SingleLayerModel) -> None:
+        """Initial state of 0 should produce valid output (no crash, no NaN)."""
+        result = _step(m, wetness=0.0)
+        assert result["wetness_out"] >= 0.0
+        assert result["wetness_out"] == result["wetness_out"]  # not NaN
+        assert result["drying_rate"] >= 0.0
+
+    def test_wetness_at_50(self, m: SingleLayerModel) -> None:
+        """Mid-range wetness should produce valid output."""
+        result = _step(m, wetness=50.0)
+        assert result["wetness_out"] >= 0.0
+        assert result["wetness_out"] <= 100.0
+        assert result["wetness_out"] == result["wetness_out"]  # not NaN
+        assert result["drying_rate"] >= 0.0
+        assert result["wetness_out"] < 50.0  # should dry (no rain input)
+
+    def test_wetness_99_point_9(self, m: SingleLayerModel) -> None:
+        """Near-max wetness should produce valid output without overflow."""
+        result = _step(m, wetness=99.9)
+        assert result["wetness_out"] >= 0.0
+        assert result["wetness_out"] < 99.9  # should dry
+        assert result["wetness_out"] == result["wetness_out"]  # not NaN
+        # Should have significant pool drain at this level
+        assert result["diagnostics"]["pool_drain_rate"] > 0.0
+
+    def test_wetness_at_100(self, m: SingleLayerModel) -> None:
+        """Maximum wetness (100) should produce valid output."""
+        result = _step(m, wetness=100.0)
+        assert result["wetness_out"] >= 0.0
+        assert result["wetness_out"] < 100.0  # should dry
+        assert result["wetness_out"] == result["wetness_out"]  # not NaN
+        # Pool depth = 100 - 40 = 60, drain = 60 * 0.12 = 7.2
+        expected_pool_drain = (100.0 - m.default_params["pool_thresh"]) * m.default_params["pool_drain_coef"]
+        assert abs(result["diagnostics"]["pool_drain_rate"] - expected_pool_drain) < 1e-6
+
+    def test_wetness_never_negative(self, m: SingleLayerModel) -> None:
+        """Wetness should never drop below zero, regardless of input."""
+        for w in [0.0, 1.0, 5.0, 20.0, 50.0, 90.0, 100.0]:
+            result = _step(m, wetness=w)
+            assert result["wetness_out"] >= -1e-9, f"wetness_out negative at input {w}"
+
+    def test_wetness_never_exceeds_100_after_rain(self, m: SingleLayerModel) -> None:
+        """Even with massive rain input, wetness should stay <= 100."""
+        ws = WeatherStep(
+            hour=0, tod=12, temp=75.0, rh=60.0,
+            wind=5.0, clouds=30.0, elevation=45.0, rain_inches=10.0,  # extreme
+        )
+        state = m.initial_state(0.0)
+        result = m.step(state, ws, m.default_params)
+        assert result["wetness_out"] <= 100.0
+        assert result["wetness_out"] == result["wetness_out"]  # not NaN
