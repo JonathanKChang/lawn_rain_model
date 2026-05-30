@@ -116,3 +116,72 @@ def test_taylor_accuracy_vs_math_sin() -> None:
         actual = math.sin(math.radians(e))
         rel_err = abs(taylor - actual) / actual
         assert rel_err < 0.14, f"e={e}: Taylor={taylor:.4f}, sin={actual:.4f}, err={rel_err:.2%}"
+
+
+# --- Full-day cycle invariant (D1) ---
+
+
+def test_sun_elevation_full_day_cycle_symmetric() -> None:
+    """sun_elevation should produce a smooth symmetric curve around solar noon.
+
+    For any day and latitude, the elevation at hour (12 - d) and hour (12 + d)
+    should be equal — symmetry around solar noon.
+    """
+    elevs = [sun_elevation(float(h), day_of_year=172, lat=39.0) for h in range(24)]
+    # Check symmetry: hour 6 == hour 18, hour 5 == hour 19, etc.
+    for d in range(1, 12):
+        h_low = 12 - d
+        h_high = 12 + d
+        assert elevs[h_low] == pytest.approx(elevs[h_high], rel=1e-10), (
+            f"Day asymmetry: hour {h_low}={elevs[h_low]:.4f} vs hour {h_high}={elevs[h_high]:.4f}"
+        )
+
+
+def test_sun_elevation_dawn_dusk_consistent() -> None:
+    """Sun should be above horizon around noon and below at night for summer solstice."""
+    elevs = [sun_elevation(float(h), day_of_year=172, lat=39.0) for h in range(24)]
+    # Morning: hours 5-6 should be rising
+    assert elevs[5] < elevs[6] < elevs[7]
+    # Noon peak
+    assert elevs[11] > elevs[12] - 5.0 and elevs[13] > elevs[12] - 5.0
+    # Evening: hours 17-18 should be falling
+    assert elevs[17] > elevs[18] > elevs[19]
+    # Night: hours 0, 1, 2, 3 should be below horizon
+    for h in (0, 1, 2, 3):
+        assert elevs[h] < 0.0, f"Hour {h} elevation should be negative: {elevs[h]}"
+
+
+def test_sun_elevation_winter_night_longer() -> None:
+    """Winter solstice should have fewer above-horizon hours than summer."""
+    summer_above = sum(1 for h in range(24) if sun_elevation(float(h), 172, 39.0) > 0)
+    winter_above = sum(1 for h in range(24) if sun_elevation(float(h), 355, 39.0) > 0)
+    assert summer_above > winter_above
+
+
+# --- Known-value regression (D2) ---
+
+
+def test_solstice_noon_precise_value() -> None:
+    """Summer solstice noon at lat=39 should be ≈ 74.45°."""
+    elev = sun_elevation(12.0, day_of_year=172, lat=39.0)
+    assert pytest.approx(elev, abs=0.5) == 74.45
+
+
+def test_equinox_noon_precise_value() -> None:
+    """Equinox noon at lat=39 should be 90 - lat = 51°."""
+    elev = sun_elevation(12.0, day_of_year=81, lat=39.0)
+    assert pytest.approx(elev, abs=0.01) == 51.0
+
+
+# --- Taylor accuracy bound tightening (D3) ---
+
+
+def test_taylor_accuracy_bound_tightened() -> None:
+    """Tighten from 14% to verify actual worst-case error is < 5%."""
+    max_err = 0.0
+    for e in range(1, 91):
+        taylor = solar_intensity_taylor(float(e))
+        actual = math.sin(math.radians(e))
+        rel_err = abs(taylor - actual) / actual
+        max_err = max(max_err, rel_err)
+    assert max_err < 0.05, f"Worst-case Taylor error is {max_err:.2%}, not < 5%"
