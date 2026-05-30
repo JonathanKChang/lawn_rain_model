@@ -220,3 +220,104 @@ class TestBoundaryWetnessValues:
         result = m.step(state, ws, m.default_params)
         assert result["wetness_out"] <= 100.0
         assert result["wetness_out"] == result["wetness_out"]  # not NaN
+
+
+class TestDiagnosticsCompleteness:
+    """Verify that model.step() always returns a complete diagnostics dict
+    with the expected keys and valid numeric values."""
+
+    EXPECTED_KEYS = {
+        "pre_dry",
+        "vpd_norm",
+        "sun_factor",
+        "wind_factor",
+        "stage_factor",
+        "evap_rate",
+        "pool_drain_rate",
+        "capillary_sink",
+        "visc_factor",
+    }
+
+    def test_all_expected_keys_present(self, m: SingleLayerModel) -> None:
+        """Every diagnostics dict must contain all expected keys."""
+        result = _step(m, wetness=50.0)
+        assert self.EXPECTED_KEYS.issubset(result["diagnostics"].keys())
+
+    def test_all_values_are_finite_floats(self, m: SingleLayerModel) -> None:
+        """All diagnostic values must be finite floats (no NaN, no inf)."""
+        import math
+        for w in [0.0, 5.0, 15.0, 25.0, 45.0, 80.0, 100.0]:
+            result = _step(m, wetness=w)
+            for key, val in result["diagnostics"].items():
+                assert isinstance(val, (int, float)), f"{key} is {type(val)}, not numeric"
+                assert math.isfinite(val), f"{key}={val} at wetness={w} is not finite"
+
+    def test_result_keys_always_present(self, m: SingleLayerModel) -> None:
+        """Top-level result dict must always have wetness_out, drying_rate, diagnostics."""
+        for w in [0.0, 50.0, 100.0]:
+            result = _step(m, wetness=w)
+            assert "wetness_out" in result
+            assert "drying_rate" in result
+            assert "diagnostics" in result
+
+
+class TestDryingRateMonotonicity:
+    """Property test: since all drying mechanisms are linear in wetness,
+    doubling wetness (within the same regime) should roughly double drying_rate.
+
+    This is a mathematically provable invariant that catches regression
+    if any non-linear term is accidentally introduced."""
+
+    def test_drying_rate_increases_with_wetness_stage2(self, m: SingleLayerModel) -> None:
+        """In Stage 2 (below thresh), drying_rate should increase monotonically with wetness."""
+        prev_rate = 0.0
+        for w in [1.0, 5.0, 10.0, 15.0]:
+            result = _step(m, wetness=w)
+            assert result["drying_rate"] > prev_rate, (
+                f"drying_rate not monotonic in Stage 2: {w}→{result['drying_rate']:.4f}, "
+                f"prev={prev_rate:.4f}"
+            )
+            prev_rate = result["drying_rate"]
+
+    def test_drying_rate_increases_with_wetness_stage1(self, m: SingleLayerModel) -> None:
+        """In Stage 1 (between thresh and pool), capillary increases with wetness,
+        so total drying should still increase monotonically."""
+        prev_rate = 0.0
+        for w in [20.0, 28.0, 35.0, 39.0]:
+            result = _step(m, wetness=w)
+            assert result["drying_rate"] > prev_rate, (
+                f"drying_rate not monotonic in Stage 1: {w}→{result['drying_rate']:.4f}, "
+                f"prev={prev_rate:.4f}"
+            )
+            prev_rate = result["drying_rate"]
+
+    def test_drying_rate_increases_with_wetness_pool(self, m: SingleLayerModel) -> None:
+        """In Pool regime, both pool_drain and capillary increase with wetness."""
+        prev_rate = 0.0
+        for w in [41.0, 50.0, 60.0, 80.0]:
+            result = _step(m, wetness=w)
+            assert result["drying_rate"] > prev_rate, (
+                f"drying_rate not monotonic in Pool: {w}→{result['drying_rate']:.4f}, "
+                f"prev={prev_rate:.4f}"
+            )
+            prev_rate = result["drying_rate"]
+
+    def test_double_wetness_approx_double_evap_stage2(self, m: SingleLayerModel) -> None:
+        """In Stage 2, doubling wetness should approximately double evaporation
+        (since stage_factor is linear in wetness)."""
+        r1 = _step(m, wetness=4.0)
+        r2 = _step(m, wetness=8.0)
+        ratio = r2["diagnostics"]["evap_rate"] / max(r1["diagnostics"]["evap_rate"], 1e-12)
+        assert 1.9 < ratio < 2.1
+
+    def test_double_wetness_approx_double_capillary_stage1(self, m: SingleLayerModel) -> None:
+        """In Stage 1, evaporation is independent of wetness (stage_factor=1).
+        But capillary IS linear, so verify evap stays constant while capillary increases."""
+        r_low = _step(m, wetness=20.0)
+        r_high = _step(m, wetness=40.0)  # just at pool_thresh boundary
+        # Evap stays constant (stage_factor=1 for both)
+        assert abs(r_low["diagnostics"]["evap_rate"] - r_high["diagnostics"]["evap_rate"]) < 1e-9
+        # But capillary increases (proportional to soil_wetness = min(w, pool_thresh))
+        ratio_cap = r_high["diagnostics"]["capillary_sink"] / max(r_low["diagnostics"]["capillary_sink"], 1e-12)
+        # soil_wetness = min(w, pool_thresh) so ratio ≈ 40/20 = 2
+        assert ratio_cap > 1.8
