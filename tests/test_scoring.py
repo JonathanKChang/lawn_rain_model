@@ -10,6 +10,7 @@ from lawn_rain_model.calibration.scoring import (
     print_score_report,
 )
 from lawn_rain_model.calibration.scenarios import (
+    RainEvent,
     Scenario,
     CalibrationTarget,
     WeatherConditions,
@@ -190,3 +191,72 @@ def test_print_score_report_no_crash(capsys: pytest.CaptureFixture) -> None:
     assert "s1" in captured.out
     assert "s2" in captured.out
     assert "Total loss:" in captured.out
+
+
+# --- I1: Status classification boundaries ---
+
+
+def test_status_classification_never_dried():
+    """A scenario where lawn never dries should be NEVER_DRIED."""
+    result = score_scenario(
+        Scenario(
+            name="never",
+            duration_hours=24,
+            rain_events=[],
+            weather=WeatherConditions(temp=45.0, rh=95.0, wind=1.0, clouds=100.0),
+            calibration=CalibrationTarget(target_hours_min=12.0, target_hours_max=12.0, weight=1.0),
+        ),
+        SingleLayerModel(),
+    )
+    assert result["status"] == "NEVER_DRIED"
+    assert result["predicted_hours"] is None
+    assert result["loss"] > 0
+
+
+def test_status_classification_no_calibration():
+    """A scenario without calibration should be NO_TARGET."""
+    result = score_scenario(
+        Scenario(
+            name="no_cal",
+            duration_hours=24,
+            rain_events=[],
+            weather=WeatherConditions(temp=80.0, rh=40.0, wind=10.0, clouds=10.0),
+            calibration=None,
+        ),
+        SingleLayerModel(),
+    )
+    assert result["status"] == "NO_TARGET"
+    assert result["target_hours"] is None
+    assert result["error_hours"] is None
+    assert result["loss"] is None
+
+
+# --- I2: Score with custom params ---
+
+
+def test_score_with_custom_params():
+    """Passing explicit params should override model defaults."""
+    # Use a scenario with rain that pushes wetness above threshold,
+    # then hot/dry weather to dry it within 24 hours
+    s = Scenario(
+        name="custom_params_test",
+        duration_hours=24,
+        rain_events=[RainEvent(hour=0, inches=1.0)],
+        weather=WeatherConditions(temp=85.0, rh=25.0, wind=15.0, clouds=5.0),
+        use_solar_model=False,
+        calibration=CalibrationTarget(target_hours_min=2.0, target_hours_max=10.0, weight=1.0),
+    )
+
+    # Score with default params — should dry quickly with hot/dry weather
+    result_default = score_scenario(s, SingleLayerModel())
+    assert result_default["predicted_hours"] is not None
+    assert isinstance(result_default["status"], str)
+
+    # Score with custom params (very high base_evap should dry faster or same)
+    custom = SingleLayerModel().default_params.copy()
+    custom["base_evap"] = 0.15  # much higher than default 0.06
+
+    result_custom = score_scenario(s, SingleLayerModel(), params=custom)
+    assert result_custom["predicted_hours"] is not None
+    # Custom params should produce a different result (faster drying)
+    assert result_custom["predicted_hours"] <= result_default["predicted_hours"]

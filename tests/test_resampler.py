@@ -91,3 +91,162 @@ def test_custom_sensor_map(tmp_path: Path) -> None:
     assert len(steps) == 1
     assert steps[0].temp == 72.0
     assert abs(steps[0].rain_inches - 0.2) < 0.001
+
+
+# --- Weather resampler edge cases (E1-E2) ---
+
+
+def test_empty_csv_returns_empty_list() -> None:
+    """A CSV with only a header row should return an empty list of steps."""
+    import tempfile, os
+    csv_text = "entity_id,state,last_changed\n"
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write(csv_text)
+        tmp_path = f.name
+    try:
+        steps = resample_history(tmp_path, DEFAULT_SENSOR_MAP)
+        assert steps == []
+    finally:
+        os.unlink(tmp_path)
+
+
+def test_headers_only_returns_empty_list() -> None:
+    """A file with headers but no data rows should return an empty list."""
+    import tempfile, os
+    csv_text = "entity_id,state,last_changed\n"
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write(csv_text)
+        tmp_path = f.name
+    try:
+        steps = resample_history(tmp_path, DEFAULT_SENSOR_MAP)
+        assert len(steps) == 0
+    finally:
+        os.unlink(tmp_path)
+
+
+def test_single_row_csv_produces_one_step() -> None:
+    """A CSV with exactly one reading per entity should produce one WeatherStep."""
+    import tempfile, os
+    csv_text = (
+        "entity_id,state,last_changed\n"
+        "sensor.pirateweather_temperature_0h,75.0,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_humidity_0h,60,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_wind_speed,5.0,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_cloud_coverage,30,2026-04-24T10:00:00.000Z\n"
+        "sensor.sun_elevation,45.0,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_current_day_liquid_accumulation,0.0,2026-04-24T10:00:00.000Z\n"
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write(csv_text)
+        tmp_path = f.name
+    try:
+        steps = resample_history(tmp_path, DEFAULT_SENSOR_MAP)
+        assert len(steps) == 1
+        assert steps[0].hour == 0
+        assert steps[0].tod == 10
+        assert steps[0].temp == 75.0
+        assert steps[0].rh == 60.0
+    finally:
+        os.unlink(tmp_path)
+
+
+def test_missing_sensor_entity_graceful() -> None:
+    """If a required sensor entity is missing, the resampler should handle it gracefully."""
+    import tempfile, os
+    # CSV only has temp — missing rh, wind, clouds, elevation, accumulation
+    csv_text = (
+        "entity_id,state,last_changed\n"
+        "sensor.pirateweather_temperature_0h,75.0,2026-04-24T10:00:00.000Z\n"
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write(csv_text)
+        tmp_path = f.name
+    try:
+        steps = resample_history(tmp_path, DEFAULT_SENSOR_MAP)
+        # Resampler produces one step but with NaN for missing sensors
+        assert len(steps) == 1 and steps[0].rh != steps[0].rh
+    finally:
+        os.unlink(tmp_path)
+
+
+def test_non_numeric_states_handled() -> None:
+    """Non-numeric state values should be coerced/ignored without crashing."""
+    import tempfile, os
+    csv_text = (
+        "entity_id,state,last_changed\n"
+        "sensor.pirateweather_temperature_0h,75.0,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_temperature_0h,not_a_number,2026-04-24T10:30:00.000Z\n"
+        "sensor.pirateweather_temperature_0h,74.0,2026-04-24T11:00:00.000Z\n"
+        "sensor.pirateweather_humidity_0h,60,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_wind_speed,5.0,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_cloud_coverage,30,2026-04-24T10:00:00.000Z\n"
+        "sensor.sun_elevation,45.0,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_current_day_liquid_accumulation,0.0,2026-04-24T10:00:00.000Z\n"
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write(csv_text)
+        tmp_path = f.name
+    try:
+        steps = resample_history(tmp_path, DEFAULT_SENSOR_MAP)
+        # Should still produce valid steps (non-numeric row was dropped by coerce)
+        for s in steps:
+            assert s.temp == s.temp  # not NaN check
+    finally:
+        os.unlink(tmp_path)
+
+
+def test_rain_accumulation_with_gaps() -> None:
+    """Missing intermediate readings should still produce correct delta from last known."""
+    import tempfile, os
+    csv_text = (
+        "entity_id,state,last_changed\n"
+        "sensor.pirateweather_temperature_0h,75.0,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_temperature_0h,74.0,2026-04-24T11:00:00.000Z\n"
+        "sensor.pirateweather_humidity_0h,60,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_wind_speed,5.0,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_cloud_coverage,30,2026-04-24T10:00:00.000Z\n"
+        "sensor.sun_elevation,45.0,2026-04-24T10:00:00.000Z\n"
+        "sensor.sun_elevation,35.0,2026-04-24T11:00:00.000Z\n"
+        "sensor.pirateweather_current_day_liquid_accumulation,0.0,2026-04-24T10:00:00.000Z\n"
+        # No accumulation reading until hour 12 — gap in data
+        "sensor.pirateweather_current_day_liquid_accumulation,0.4,2026-04-24T12:00:00.000Z\n"
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write(csv_text)
+        tmp_path = f.name
+    try:
+        steps = resample_history(tmp_path, DEFAULT_SENSOR_MAP)
+        # Hour 10 and 11: accumulation was 0.0 at hour 10, so rain = 0.0 for those hours
+        # (diff of same value or first bucket uses accumulation value which is 0.0)
+        hour_10_step = next(s for s in steps if s.hour == 0)
+        assert hour_10_step.rain_inches == 0.0
+    finally:
+        os.unlink(tmp_path)
+
+
+def test_concurrent_same_hour_readings_last_wins() -> None:
+    """Multiple readings within the same hour should use the last one (forward-fill)."""
+    # The existing fixture history_simple.csv already covers this — it has readings at :00 and :30.
+    # Additional explicit test: 3 readings in same hour.
+    import tempfile, os
+    csv_text = (
+        "entity_id,state,last_changed\n"
+        "sensor.pirateweather_temperature_0h,70.0,2026-04-24T10:05:00.000Z\n"
+        "sensor.pirateweather_temperature_0h,73.0,2026-04-24T10:20:00.000Z\n"
+        "sensor.pirateweather_temperature_0h,76.0,2026-04-24T10:55:00.000Z\n"
+        "sensor.pirateweather_humidity_0h,60,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_wind_speed,5.0,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_cloud_coverage,30,2026-04-24T10:00:00.000Z\n"
+        "sensor.sun_elevation,45.0,2026-04-24T10:00:00.000Z\n"
+        "sensor.pirateweather_current_day_liquid_accumulation,0.0,2026-04-24T10:00:00.000Z\n"
+    )
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write(csv_text)
+        tmp_path = f.name
+    try:
+        steps = resample_history(tmp_path, DEFAULT_SENSOR_MAP)
+        assert len(steps) == 1
+        # Last reading in the hour should be used (forward-fill last)
+        assert steps[0].temp == 76.0, f"Expected temp=76.0 (last reading), got {steps[0].temp}"
+    finally:
+        os.unlink(tmp_path)

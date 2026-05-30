@@ -2,7 +2,11 @@
 from __future__ import annotations
 import pytest
 from lawn_rain_model.models.single_layer import SingleLayerModel
-from lawn_rain_model.simulation.runner import run_scenario, hours_to_mow
+from lawn_rain_model.simulation.runner import (
+    run_scenario,
+    hours_to_mow,
+    _expand_to_substeps,
+)
 from lawn_rain_model.calibration.scenarios import (
     Scenario, WeatherConditions, RainEvent,
 )
@@ -261,3 +265,122 @@ def test_nan_rain_values_filled_in_resampler() -> None:
         assert total > 0, "Expected some rain from the accumulation delta"
     finally:
         os.unlink(csv_path)
+
+
+# ---------------------------------------------------------------------------
+# Phase F: Scenario Runner edge cases
+# ---------------------------------------------------------------------------
+
+
+def test_interpolation_correctness():
+    """Weather interpolation between two different hours should be exact linear."""
+    from lawn_rain_model.simulation.runner import build_weather_steps
+    from lawn_rain_model.calibration.scenarios import (
+        Scenario, WeatherConditions, RainEvent,
+    )
+
+    # Create a scenario with varying weather (temp changes each hour)
+    s = Scenario(
+        name="interp_test",
+        duration_hours=2,
+        rain_events=[],
+        weather=None,  # will be overridden per-hour in build_weather_steps
+        use_solar_model=False,
+        start_hour=12,
+        day_of_year=172,
+        latitude=39.0,
+        time_step_minutes=15,  # 4 sub-steps per hour
+    )
+
+    # Manually build weather steps with known varying values
+    from lawn_rain_model.simulation.weather import WeatherStep
+
+    hourly_steps = [
+        WeatherStep(hour=0, tod=12, temp=60.0, rh=80.0, wind=2.0, clouds=90.0,
+                    elevation=30.0, rain_inches=0.0),
+        WeatherStep(hour=1, tod=13, temp=80.0, rh=40.0, wind=10.0, clouds=10.0,
+                    elevation=60.0, rain_inches=0.0),
+    ]
+    steps = _expand_to_substeps(hourly_steps, s, is_history=False)
+    sph = s.steps_per_hour  # = 4
+
+    # Hour 0 sub_step=2 (fraction=0.5): temp should interpolate from 60→80
+    # at fraction 0.5: 60*0.5 + 80*0.5 = 70
+    step_2 = steps[2]
+    assert step_2.temp == pytest.approx(70.0, abs=1e-9)
+    assert step_2.rh == pytest.approx(60.0, abs=1e-9)
+    assert step_2.wind == pytest.approx(6.0, abs=1e-9)
+
+
+def test_zero_duration_scenario():
+    """A scenario with duration=0 should produce zero rows."""
+    s = Scenario(
+        name="zero_dur",
+        duration_hours=0,
+        rain_events=[],
+        weather=WeatherConditions(temp=75.0, rh=60.0, wind=5.0, clouds=30.0),
+        use_solar_model=False,
+        start_hour=12,
+        day_of_year=172,
+        latitude=39.0,
+    )
+    rows = run_scenario(s, SingleLayerModel(), SingleLayerModel().default_params)
+    assert len(rows) == 0
+
+
+def test_single_hour_scenario():
+    """A scenario with duration=1 should produce exactly steps_per_hour rows."""
+    s = Scenario(
+        name="one_hour",
+        duration_hours=1,
+        rain_events=[RainEvent(hour=0, inches=0.5)],
+        weather=WeatherConditions(temp=75.0, rh=60.0, wind=5.0, clouds=30.0),
+        use_solar_model=False,
+        start_hour=12,
+        day_of_year=172,
+        latitude=39.0,
+        time_step_minutes=15,  # 4 sub-steps
+    )
+    model = SingleLayerModel()
+    rows = run_scenario(s, model, model.default_params)
+    assert len(rows) == s.steps_per_hour  # = 4
+    # First row should have the rain
+    assert rows[0]["rain_inches"] == 0.5
+    # Remaining sub-steps in hour 0 should have no rain
+    for r in rows[1:]:
+        assert r["rain_inches"] == 0.0
+
+
+def test_row_ordering_by_hour_substep():
+    """Rows must be strictly ordered by (hour, sub_step) tuple."""
+    s = _hot_dry_scenario()
+    rows = run_scenario(s, SingleLayerModel(), SingleLayerModel().default_params)
+    for i in range(len(rows) - 1):
+        cur_hour = rows[i]["hour"]
+        cur_ss = rows[i]["sub_step"]
+        nxt_hour = rows[i + 1]["hour"]
+        nxt_ss = rows[i + 1]["sub_step"]
+        assert (cur_hour, cur_ss) < (nxt_hour, nxt_ss), (
+            f"Row order violated at index {i}: ({cur_hour},{cur_ss}) not < ({nxt_hour},{nxt_ss})"
+        )
+
+
+def test_multiple_rain_events_same_hour():
+    """Multiple RainEvents for the same hour: last one wins (dict comprehension behavior)."""
+    from lawn_rain_model.calibration.scenarios import (
+        Scenario, WeatherConditions, RainEvent,
+    )
+
+    s = Scenario(
+        name="multi_rain",
+        duration_hours=2,
+        rain_events=[RainEvent(hour=0, inches=1.0), RainEvent(hour=0, inches=2.0)],
+        weather=WeatherConditions(temp=75.0, rh=60.0, wind=5.0, clouds=30.0),
+        use_solar_model=False,
+        start_hour=12,
+        day_of_year=172,
+        latitude=39.0,
+    )
+    rows = run_scenario(s, SingleLayerModel(), SingleLayerModel().default_params)
+    # Hour 0 sub_step=0 has rain_inches from the LAST event (dict comprehension: 2.0)
+    assert rows[0]["rain_inches"] == 2.0

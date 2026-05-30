@@ -16,6 +16,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=5.0",
     "mypy>=1.10",
     "pandas-stubs>=2.2",
 ]
@@ -30,3 +31,23 @@ include = ["lawn_rain_model*"]
 [tool.mypy]
 strict = true
 ignore_missing_imports = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=lawn_rain_model --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+source = ["lawn_rain_model"]
+omit = [
+    "*/__pycache__/*",
+    "tests/*",
+    "frontend/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.",
+]
