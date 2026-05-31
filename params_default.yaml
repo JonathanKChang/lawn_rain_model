@@ -6,7 +6,6 @@ params:
   pool_drain_coef: 0.12
   pool_thresh: 40.0
   rain_mult: 40.0
-  solar_exp: 0.7
   stage_thresh: 18.0
   sun_coeff: 0.18
   visc_floor: 0.35
