@@ -34,6 +34,9 @@ ignore_missing_imports = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (run with `pytest -m slow`)",
+]
 addopts = "--cov=lawn_rain_model --cov-report=term-missing --cov-fail-under=80"
 
 [tool.coverage.run]

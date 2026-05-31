@@ -301,7 +301,12 @@ def test_interpolation_correctness():
         WeatherStep(hour=1, tod=13, temp=80.0, rh=40.0, wind=10.0, clouds=10.0,
                     elevation=60.0, rain_inches=0.0),
     ]
-    steps = _expand_to_substeps(hourly_steps, s, is_history=False)
+    from lawn_rain_model.simulation.runner import InterpolationMode
+
+    steps = _expand_to_substeps(
+        hourly_steps, s,
+        interpolation=InterpolationMode.LINEAR,
+    )
     sph = s.steps_per_hour  # = 4
 
     # Hour 0 sub_step=2 (fraction=0.5): temp should interpolate from 60→80
@@ -312,8 +317,8 @@ def test_interpolation_correctness():
     assert step_2.wind == pytest.approx(6.0, abs=1e-9)
 
 
-def test_zero_duration_scenario():
-    """A scenario with duration=0 should produce zero rows."""
+def test_zero_duration_scenario_raises():
+    """A weather-backed scenario with duration=0 must raise ValueError."""
     s = Scenario(
         name="zero_dur",
         duration_hours=0,
@@ -324,8 +329,8 @@ def test_zero_duration_scenario():
         day_of_year=172,
         latitude=39.0,
     )
-    rows = run_scenario(s, SingleLayerModel(), SingleLayerModel().default_params)
-    assert len(rows) == 0
+    with pytest.raises(ValueError, match="duration_hours must be positive"):
+        run_scenario(s, SingleLayerModel(), SingleLayerModel().default_params)
 
 
 def test_single_hour_scenario():
@@ -366,7 +371,7 @@ def test_row_ordering_by_hour_substep():
 
 
 def test_multiple_rain_events_same_hour():
-    """Multiple RainEvents for the same hour: last one wins (dict comprehension behavior)."""
+    """Multiple RainEvents for the same hour are summed (physically correct)."""
     from lawn_rain_model.calibration.scenarios import (
         Scenario, WeatherConditions, RainEvent,
     )
@@ -382,5 +387,5 @@ def test_multiple_rain_events_same_hour():
         latitude=39.0,
     )
     rows = run_scenario(s, SingleLayerModel(), SingleLayerModel().default_params)
-    # Hour 0 sub_step=0 has rain_inches from the LAST event (dict comprehension: 2.0)
-    assert rows[0]["rain_inches"] == 2.0
+    # Hour 0 sub_step=0 has rain_inches summed: 1.0 + 2.0 = 3.0
+    assert rows[0]["rain_inches"] == pytest.approx(3.0)

@@ -3,10 +3,13 @@
 from __future__ import annotations
 import argparse
 import csv as csv_mod
+import logging
 import sys
 from pathlib import Path
 from typing import Any
 import yaml
+
+logger = logging.getLogger(__name__)
 
 from lawn_rain_model.models.single_layer import SingleLayerModel
 from lawn_rain_model.calibration.scenarios import Scenario, ScenarioLoader, WeatherConditions, RainEvent
@@ -20,11 +23,22 @@ from lawn_rain_model.cli.display import (
 from lawn_rain_model.calibration.scoring import score_all_scenarios, print_score_report
 
 
-def _load_params(params_file: str | None, model: SingleLayerModel) -> dict[str, float]:
+def _load_params(
+    params_file: str | None, model: SingleLayerModel, *, validate: bool = True,
+) -> dict[str, float]:
     p = model.default_params
     if params_file:
         override = yaml.safe_load(Path(params_file).read_text()).get("params", {})
         p.update(override)
+    if validate:
+        errors = model.validate_params(p)
+        if errors:
+            for err in errors:
+                logger.error("Parameter validation: %s", err)
+            sys.exit(
+                f"{len(errors)} parameter validation error(s). "
+                "Fix your params file or use defaults."
+            )
     return p
 
 

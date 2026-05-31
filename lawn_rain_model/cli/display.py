@@ -1,15 +1,17 @@
 # lawn_rain_model/cli/display.py
 """Terminal display helpers. Reads SingleLayerModel diagnostics by known key names."""
 from __future__ import annotations
+import math
 from typing import Any
 from lawn_rain_model.calibration.scenarios import Scenario
-from lawn_rain_model.simulation.runner import hours_to_mow
+from lawn_rain_model.calibration.loss import scenario_loss
+from lawn_rain_model.simulation.runner import hours_to_mow, run_scenario
 
 BAR_WIDTH = 40
 
 
 def sparkline(value: float, stage_thresh: float = 18.0, pool_thresh: float = 40.0) -> str:
-    if value != value:  # NaN check
+    if math.isnan(value):
         return "[????????????????????????????????????????]"
     filled = max(0, min(BAR_WIDTH, int(round(value / 100.0 * BAR_WIDTH))))
     bar = list("\u2588" * filled + "\u00b7" * (BAR_WIDTH - filled))
@@ -124,8 +126,6 @@ def print_optimizer_report(
     calibration_scenarios: list[Scenario],
     model: Any,
 ) -> None:
-    from lawn_rain_model.simulation.runner import run_scenario, hours_to_mow
-    from lawn_rain_model.calibration.loss import scenario_loss
 
     p       = opt["params"]
     tunable = set(opt["tunable_keys"])
