@@ -1,20 +1,16 @@
 # lawn_rain_model/calibration/optimizer.py
 """Differential evolution optimizer for model parameter fitting."""
 from __future__ import annotations
-from typing import Any
-from scipy.optimize import differential_evolution
+import logging
+from typing import Callable
+from scipy.optimize import OptimizeResult, differential_evolution
 from lawn_rain_model.models.protocol import LawnModel
 from lawn_rain_model.calibration.scenarios import Scenario
 from lawn_rain_model.calibration.loss import scenario_loss
 from lawn_rain_model.simulation.runner import run_scenario, hours_to_mow
+from lawn_rain_model.types import ArrayLike, OptimizerResult
 
-_iter_count: list[int] = [0]
-
-
-def _progress_cb(xk: Any, convergence: float) -> None:
-    _iter_count[0] += 1
-    if _iter_count[0] % 50 == 0:
-        print(f"  iter={_iter_count[0]:>5}  convergence={convergence:.8f}", end="\r", flush=True)
+logger = logging.getLogger(__name__)
 
 
 def build_objective(
@@ -22,8 +18,8 @@ def build_objective(
     model: LawnModel,
     base_params: dict[str, float],
     tunable_keys: list[str],
-) -> Any:
-    def objective(vec: Any) -> float:
+) -> Callable[[ArrayLike], float]:
+    def objective(vec: ArrayLike) -> float:
         p = base_params.copy()
         for k, v in zip(tunable_keys, vec):
             p[k] = v
@@ -48,7 +44,7 @@ def run_optimizer(
     popsize: int = 20,
     tol: float = 1e-5,
     seed: int = 42,
-) -> dict[str, Any]:
+) -> OptimizerResult:
     frozen = frozen or {}
     bounds_map = model.param_bounds
     tunable_keys = [k for k in bounds_map if k not in frozen]
@@ -62,8 +58,18 @@ def run_optimizer(
     print(f"Frozen: {list(frozen.keys()) or 'none'}")
     print(f"Popsize={popsize}  maxiter={maxiter}  tol={tol}\n")
 
-    _iter_count[0] = 0
-    result = differential_evolution(
+    iter_count = 0
+
+    def _progress_cb(xk: ArrayLike, convergence: float) -> None:
+        nonlocal iter_count
+        iter_count += 1
+        if iter_count % 50 == 0:
+            logger.info(
+                "iter=%5d  convergence=%.8f",
+                iter_count, convergence,
+            )
+
+    de_result: OptimizeResult = differential_evolution(
         build_objective(calibration_scenarios, model, base_params, tunable_keys),
         bounds,
         seed=seed,
@@ -78,14 +84,14 @@ def run_optimizer(
     print()
 
     best_params = base_params.copy()
-    for k, v in zip(tunable_keys, result.x):
+    for k, v in zip(tunable_keys, de_result.x):
         best_params[k] = v
 
     return {
         "params":       best_params,
-        "loss":         result.fun,
-        "success":      result.success,
-        "message":      result.message,
-        "iterations":   result.nit,
+        "loss":         float(de_result.fun),
+        "success":      bool(de_result.success),
+        "message":      str(de_result.message),
+        "iterations":   int(de_result.nit),
         "tunable_keys": tunable_keys,
     }
