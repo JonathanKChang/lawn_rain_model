@@ -371,7 +371,7 @@ def test_row_ordering_by_hour_substep():
 
 
 def test_multiple_rain_events_same_hour():
-    """Multiple RainEvents for the same hour: last one wins (dict comprehension behavior)."""
+    """Multiple RainEvents for the same hour are summed (physically correct)."""
     from lawn_rain_model.calibration.scenarios import (
         Scenario, WeatherConditions, RainEvent,
     )
@@ -387,5 +387,5 @@ def test_multiple_rain_events_same_hour():
         latitude=39.0,
     )
     rows = run_scenario(s, SingleLayerModel(), SingleLayerModel().default_params)
-    # Hour 0 sub_step=0 has rain_inches from the LAST event (dict comprehension: 2.0)
-    assert rows[0]["rain_inches"] == 2.0
+    # Hour 0 sub_step=0 has rain_inches summed: 1.0 + 2.0 = 3.0
+    assert rows[0]["rain_inches"] == pytest.approx(3.0)

@@ -115,7 +115,12 @@ def build_weather_steps(
             f"Scenario '{scenario.name}' has no history_file and no weather block."
         )
         w = scenario.weather
-        rain_map = {e.hour: e.inches for e in scenario.rain_events}
+        # Sum rain events per hour (robust even if created programmatically).
+        from collections import defaultdict
+        rain_raw: dict[int, float] = defaultdict(float)
+        for ev in scenario.rain_events:
+            rain_raw[ev.hour] += ev.inches
+        rain_map = dict(rain_raw)
         weather_steps: list[WeatherStep] = []
         for h in range(scenario.duration_hours):
             tod = (scenario.start_hour + h) % 24
