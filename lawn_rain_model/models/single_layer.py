@@ -54,6 +54,11 @@ _PARAM_BOUNDS: dict[str, tuple[float, float]] = {
     "mow_threshold":   (1.0,  20.0),
 }
 
+# Keys that must satisfy physical ordering constraints.
+_PHYSICAL_CONSTRAINTS: list[tuple[str, str]] = [
+    ("stage_thresh", "pool_thresh"),
+]
+
 
 class SingleLayerModel:
     """
@@ -75,6 +80,36 @@ class SingleLayerModel:
 
     def surface_wetness(self, state: float) -> float:
         return state
+
+    @staticmethod
+    def validate_params(params: dict[str, float]) -> list[str]:
+        """Validate parameter values and return a list of error messages.
+
+        Returns an empty list when all parameters are valid. This check
+        is performed before each scenario run (by the CLI) to catch
+        configuration mistakes early.
+        """
+        errors: list[str] = []
+        bounds = _PARAM_BOUNDS  # module-level constant in same file
+
+        for key, (lo, hi) in bounds.items():
+            val = params.get(key)
+            if val is None:
+                errors.append(f"missing required parameter '{key}'")
+            elif val < lo or val > hi:
+                errors.append(
+                    f"'{key}'={val:.4f} outside bounds [{lo}, {hi}]"
+                )
+
+        # Physical ordering constraints
+        for a, b in _PHYSICAL_CONSTRAINTS:
+            va, vb = params.get(a), params.get(b)
+            if va is not None and vb is not None and va >= vb:
+                errors.append(
+                    f"'{a}' ({va:.2f}) must be < '{b}' ({vb:.2f})"
+                )
+
+        return errors
 
     def step(
         self,

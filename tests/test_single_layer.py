@@ -108,3 +108,32 @@ def test_pool_drain_positive_above_pool_thresh(m: SingleLayerModel) -> None:
     result = m.step(m.initial_state(0.0), make_step(rain=2.0), p)
     # 2.0 * 40.0 = 80.0 > pool_thresh
     assert result["diagnostics"]["pool_drain_rate"] > 0.0
+
+
+def test_validate_params_valid(m: SingleLayerModel) -> None:
+    """Default params pass validation."""
+    errors = m.validate_params(m.default_params)
+    assert errors == []
+
+
+def test_validate_params_out_of_bounds(m: SingleLayerModel) -> None:
+    """Params outside bounds produce errors."""
+    p = m.default_params.copy()
+    p["base_evap"] = 0.99  # max is 0.20
+    errors = m.validate_params(p)
+    assert any("base_evap" in e for e in errors)
+
+
+def test_validate_params_stage_ge_pool(m: SingleLayerModel) -> None:
+    """stage_thresh >= pool_thresh produces an ordering error."""
+    p = m.default_params.copy()
+    p["stage_thresh"] = 50.0  # pool_thresh is 40.0
+    errors = m.validate_params(p)
+    assert any("stage_thresh" in e for e in errors)
+
+
+def test_validate_params_missing_key(m: SingleLayerModel) -> None:
+    """Missing required parameters produce errors."""
+    p = {k: v for k, v in m.default_params.items() if k != "base_evap"}
+    errors = m.validate_params(p)
+    assert any("base_evap" in e for e in errors)
