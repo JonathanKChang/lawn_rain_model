@@ -5,8 +5,16 @@ from dataclasses import dataclass
 from pathlib import Path
 import pandas as pd
 
-# Mapping from logical field name → HA entity_id.
-# Override per-scenario in YAML under history_sensor_map:.
+# Mapping from logical field name → Home Assistant entity_id.
+#
+# These defaults are tuned for the PirateWeather integration.
+# Override per-scenario via the ``history_sensor_map`` YAML key, or
+# pass a custom ``sensor_map`` to cmd_csv_run --sensor-map.
+#
+# Supported integrations (community-tested):
+#   - PirateWeather (default)
+#   - WeatherFlow (requires mapping entity IDs from your HA instance)
+#   - OpenWeatherMap (requires entity ID lookup in HA)
 DEFAULT_SENSOR_MAP: dict[str, str] = {
     "temp":               "sensor.pirateweather_temperature_0h",
     "rh":                 "sensor.pirateweather_humidity_0h",
