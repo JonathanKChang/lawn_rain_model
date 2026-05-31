@@ -301,7 +301,12 @@ def test_interpolation_correctness():
         WeatherStep(hour=1, tod=13, temp=80.0, rh=40.0, wind=10.0, clouds=10.0,
                     elevation=60.0, rain_inches=0.0),
     ]
-    steps = _expand_to_substeps(hourly_steps, s, is_history=False)
+    from lawn_rain_model.simulation.runner import InterpolationMode
+
+    steps = _expand_to_substeps(
+        hourly_steps, s,
+        interpolation=InterpolationMode.LINEAR,
+    )
     sph = s.steps_per_hour  # = 4
 
     # Hour 0 sub_step=2 (fraction=0.5): temp should interpolate from 60→80

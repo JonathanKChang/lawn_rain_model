@@ -1,6 +1,7 @@
 # lawn_rain_model/simulation/runner.py
 """Model-agnostic scenario runner."""
 from __future__ import annotations
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -10,18 +11,25 @@ from lawn_rain_model.simulation.weather import WeatherStep
 from lawn_rain_model.simulation.solar import sun_elevation
 
 
+class InterpolationMode(Enum):
+    """How weather values are interpolated between consecutive hours."""
+
+    LINEAR = "linear"           # Linear interpolation (weather-backed)
+    FORWARD_FILL = "ffill"      # Last observation carried forward (CSV)
+
+
 def _expand_to_substeps(
     hourly_steps: list[WeatherStep],
     scenario: Scenario,
-    is_history: bool,
+    interpolation: InterpolationMode = InterpolationMode.LINEAR,
 ) -> list[WeatherStep]:
     """
     Expand a list of hourly WeatherStep objects into sub-steps.
 
-    For weather-backed scenarios (is_history=False), linearly interpolate
+    For weather-backed scenarios (INTERPOLATION=LINEAR), linearly interpolate
     weather values between consecutive hours across sub-steps.
 
-    For history CSV scenarios (is_history=True), keep weather values
+    For history CSV scenarios (INTERPOLATION=FORWARD_FILL), keep weather values
     constant (forward-filled) across all sub-steps within the hour.
 
     Rain events apply only to the first sub-step (sub_step=0).
@@ -40,7 +48,7 @@ def _expand_to_substeps(
             has_next = (idx + 1 < len(hourly_steps))
             n_step = hourly_steps[idx + 1] if has_next else None
 
-            if is_history or not has_next:
+            if interpolation == InterpolationMode.FORWARD_FILL or not has_next:
                 # Forward-fill: use current hour's values for all sub-steps
                 temp = h_step.temp
                 rh = h_step.rh
@@ -97,7 +105,8 @@ def build_weather_steps(
             csv_path = base_path / csv_path
         sensor_map = {**DEFAULT_SENSOR_MAP, **scenario.sensor_map}
         hourly_steps = resample_history(csv_path, sensor_map)
-        return _expand_to_substeps(hourly_steps, scenario, is_history=True)
+        return _expand_to_substeps(hourly_steps, scenario,
+                                   interpolation=InterpolationMode.FORWARD_FILL)
     else:
         assert scenario.weather is not None, (
             f"Scenario '{scenario.name}' has no history_file and no weather block."
@@ -118,7 +127,8 @@ def build_weather_steps(
                 elevation=elev,
                 rain_inches=rain_map.get(h, 0.0),
             ))
-        return _expand_to_substeps(weather_steps, scenario, is_history=False)
+        return _expand_to_substeps(weather_steps, scenario,
+                                   interpolation=InterpolationMode.LINEAR)
 
 
 def run_scenario(
