@@ -212,3 +212,72 @@ def test_yaml_only_comments_returns_empty():
     finally:
         os.unlink(tmp_path)
 
+
+def test_duplicate_rain_events_same_hour_summed():
+    """Multiple RainEvents for the same hour are summed."""
+    import tempfile, os
+    from lawn_rain_model.calibration.scenarios import ScenarioLoader
+
+    yaml_text = textwrap.dedent("""\
+        scenarios:
+          - name: summed_rain
+            duration_hours: 24
+            rain_events:
+              - hour: 0
+                inches: 1.0
+              - hour: 0
+                inches: 0.5
+              - hour: 5
+                inches: 0.3
+            weather:
+              temp: 75
+              rh: 60
+              wind: 5
+              clouds: 30
+    """)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_text)
+        tmp_path = f.name
+
+    try:
+        scenarios = ScenarioLoader.load(tmp_path)
+        s = scenarios[0]
+        assert len(s.rain_events) == 2
+        assert s.rain_events[0].hour == 0
+        assert s.rain_events[0].inches == pytest.approx(1.5)
+        assert s.rain_events[1].hour == 5
+        assert s.rain_events[1].inches == pytest.approx(0.3)
+    finally:
+        os.unlink(tmp_path)
+
+
+def test_identical_rain_events_raises_error():
+    """Two RainEvents with same hour+inches is a YAML mistake — raises."""
+    import tempfile, os
+    from lawn_rain_model.calibration.scenarios import ScenarioLoader
+
+    yaml_text = textwrap.dedent("""\
+        scenarios:
+          - name: dup_rain
+            duration_hours: 24
+            rain_events:
+              - hour: 0
+                inches: 1.0
+              - hour: 0
+                inches: 1.0
+            weather:
+              temp: 75
+              rh: 60
+              wind: 5
+              clouds: 30
+    """)
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+        f.write(yaml_text)
+        tmp_path = f.name
+
+    try:
+        with pytest.raises(ValueError, match="duplicate rain events"):
+            ScenarioLoader.load(tmp_path)
+    finally:
+        os.unlink(tmp_path)
+
