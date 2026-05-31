@@ -27,7 +27,6 @@ def test_real_history_produces_steps() -> None:
             weather=None,
             history_file=str(TEST_HISTORY_CSV),
         ),
-        base_path=FIXTURES_DIR,
     )
     assert len(steps) > 0
 
@@ -45,7 +44,7 @@ def test_real_history_runner_completes() -> None:
         weather=None,
         history_file=str(TEST_HISTORY_CSV),
     )
-    steps = build_weather_steps(s, base_path=FIXTURES_DIR)
+    steps = build_weather_steps(s)
     rows = run_scenario(s, model, model.default_params, weather_steps=steps)
     assert len(rows) == len(steps)
     assert all("wetness_out" in r for r in rows)
@@ -110,7 +109,7 @@ def test_history_scenario_runs_end_to_end(tmp_path: Path) -> None:
         weather=None,
         history_file=str(hist_csv),
     )
-    steps = build_weather_steps(s, base_path=tmp_path)
+    steps = build_weather_steps(s)
     rows = run_scenario(s, model, model.default_params, weather_steps=steps)
     assert len(rows) > 0
     assert rows[0]["rain_inches"] > 0   # 0.3" fell in hour 10
@@ -165,7 +164,7 @@ def test_fixture_history_scenario_runs(tmp_path: Path) -> None:
     history_scenario = next(s for s in scenarios if s.name == "history_test_scenario")
 
     model = SingleLayerModel()
-    steps = build_weather_steps(history_scenario, base_path=FIXTURES_DIR)
+    steps = build_weather_steps(history_scenario)
     rows = run_scenario(history_scenario, model, model.default_params, weather_steps=steps)
     assert len(rows) > 0
     assert rows[0]["rain_inches"] >= 0

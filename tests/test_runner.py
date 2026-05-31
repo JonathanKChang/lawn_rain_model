@@ -317,8 +317,8 @@ def test_interpolation_correctness():
     assert step_2.wind == pytest.approx(6.0, abs=1e-9)
 
 
-def test_zero_duration_scenario():
-    """A scenario with duration=0 should produce zero rows."""
+def test_zero_duration_scenario_raises():
+    """A weather-backed scenario with duration=0 must raise ValueError."""
     s = Scenario(
         name="zero_dur",
         duration_hours=0,
@@ -329,8 +329,8 @@ def test_zero_duration_scenario():
         day_of_year=172,
         latitude=39.0,
     )
-    rows = run_scenario(s, SingleLayerModel(), SingleLayerModel().default_params)
-    assert len(rows) == 0
+    with pytest.raises(ValueError, match="duration_hours must be positive"):
+        run_scenario(s, SingleLayerModel(), SingleLayerModel().default_params)
 
 
 def test_single_hour_scenario():

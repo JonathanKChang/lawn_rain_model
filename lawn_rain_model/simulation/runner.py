@@ -81,7 +81,6 @@ def _expand_to_substeps(
 
 def build_weather_steps(
     scenario: Scenario,
-    base_path: Path | None = None,
 ) -> list[WeatherStep]:
     """
     Build the WeatherStep list for a scenario.
@@ -98,11 +97,15 @@ def build_weather_steps(
     Otherwise, generate sub-steps from scenario.weather + solar model
     with linear interpolation between consecutive hours.
     """
+    if scenario.history_file is None and scenario.duration_hours <= 0:
+        raise ValueError(
+            f"Scenario '{scenario.name}': duration_hours must be positive, "
+            f"got {scenario.duration_hours}."
+        )
+
     if scenario.history_file:
         from lawn_rain_model.simulation.weather import resample_history, DEFAULT_SENSOR_MAP
         csv_path = Path(scenario.history_file)
-        if base_path and not csv_path.is_absolute():
-            csv_path = base_path / csv_path
         sensor_map = {**DEFAULT_SENSOR_MAP, **scenario.sensor_map}
         hourly_steps = resample_history(csv_path, sensor_map)
         return _expand_to_substeps(hourly_steps, scenario,
