@@ -56,7 +56,7 @@ _PARAM_BOUNDS: dict[str, tuple[float, float]] = {
 
 # Keys that must satisfy physical ordering constraints.
 _PHYSICAL_CONSTRAINTS: list[tuple[str, str]] = [
-    ("stage_thresh", "pool_thresh"),
+    ("stage_thresh", "pool_thresh"),  # stage < pool to avoid nonsensical pooling
 ]
 
 

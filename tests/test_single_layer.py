@@ -110,6 +110,9 @@ def test_pool_drain_positive_above_pool_thresh(m: SingleLayerModel) -> None:
     assert result["diagnostics"]["pool_drain_rate"] > 0.0
 
 
+# --- Parameter validation tests ---
+
+
 def test_validate_params_valid(m: SingleLayerModel) -> None:
     """Default params pass validation."""
     errors = m.validate_params(m.default_params)

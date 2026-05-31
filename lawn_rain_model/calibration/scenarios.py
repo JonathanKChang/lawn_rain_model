@@ -15,7 +15,7 @@ def _deduplicate_rain_events(
     """Merge rain events sharing the same hour; raise on truly duplicate entries.
 
     When multiple RainEvents target the same hour, their inches are summed
-    (physically correct — rain accumulates within an hour).
+    (this is the physically correct behavior — rain accumulates within an hour).
 
     If two events have identical hour *and* identical inches, this is almost
     certainly a YAML copy/paste mistake and we raise to catch it early.

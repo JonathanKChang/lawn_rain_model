@@ -213,6 +213,9 @@ def test_yaml_only_comments_returns_empty():
         os.unlink(tmp_path)
 
 
+# --- J: Duplicate rain event detection ---
+
+
 def test_duplicate_rain_events_same_hour_summed():
     """Multiple RainEvents for the same hour are summed."""
     import tempfile, os
@@ -242,6 +245,7 @@ def test_duplicate_rain_events_same_hour_summed():
     try:
         scenarios = ScenarioLoader.load(tmp_path)
         s = scenarios[0]
+        # Hour 0: 1.0 + 0.5 = 1.5
         assert len(s.rain_events) == 2
         assert s.rain_events[0].hour == 0
         assert s.rain_events[0].inches == pytest.approx(1.5)

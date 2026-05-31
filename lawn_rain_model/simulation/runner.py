@@ -1,6 +1,7 @@
 # lawn_rain_model/simulation/runner.py
 """Model-agnostic scenario runner."""
 from __future__ import annotations
+import logging
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -9,13 +10,16 @@ from lawn_rain_model.models.protocol import LawnModel
 from lawn_rain_model.calibration.scenarios import Scenario, WeatherConditions
 from lawn_rain_model.simulation.weather import WeatherStep
 from lawn_rain_model.simulation.solar import sun_elevation
+from lawn_rain_model.types import SimulationRow
+
+logger = logging.getLogger(__name__)
 
 
 class InterpolationMode(Enum):
     """How weather values are interpolated between consecutive hours."""
 
-    LINEAR = "linear"           # Linear interpolation (weather-backed)
-    FORWARD_FILL = "ffill"      # Last observation carried forward (CSV)
+    LINEAR = "linear"      # Linear interpolation (weather-backed scenarios)
+    FORWARD_FILL = "ffill" # Last value carried forward (history CSV)
 
 
 def _expand_to_substeps(
@@ -105,8 +109,8 @@ def build_weather_steps(
 
     if scenario.history_file:
         from lawn_rain_model.simulation.weather import resample_history, DEFAULT_SENSOR_MAP
-        csv_path = Path(scenario.history_file)
         sensor_map = {**DEFAULT_SENSOR_MAP, **scenario.sensor_map}
+        csv_path = Path(scenario.history_file)
         hourly_steps = resample_history(csv_path, sensor_map)
         return _expand_to_substeps(hourly_steps, scenario,
                                    interpolation=InterpolationMode.FORWARD_FILL)
@@ -115,7 +119,7 @@ def build_weather_steps(
             f"Scenario '{scenario.name}' has no history_file and no weather block."
         )
         w = scenario.weather
-        # Sum rain events per hour (robust even if created programmatically).
+        # Sum rain events per hour (robust even if created programmatically)
         from collections import defaultdict
         rain_raw: dict[int, float] = defaultdict(float)
         for ev in scenario.rain_events:
@@ -145,7 +149,7 @@ def run_scenario(
     params: dict[str, float],
     weather_steps: list[WeatherStep] | None = None,
     stop_after_mow: bool = False,
-) -> list[dict[str, Any]]:
+) -> list[SimulationRow]:
     """
     Run a scenario for its full duration.
 
@@ -193,7 +197,7 @@ def run_scenario(
 
 
 def hours_to_mow(
-    rows: list[dict[str, Any]],
+    rows: list[SimulationRow],
     threshold: float,
     steps_per_hour: int = 1,
 ) -> int | None:
